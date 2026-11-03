@@ -30,19 +30,32 @@ Run Git commands from this repository's root, or use `git -C` with its path.
 Do not register this checkout as a submodule unless requested.
 
 Use two-space indentation, semicolons and descriptive camelCase names. Use
-CommonJS `.cjs` for Electron and Node.js code and plain JavaScript for renderer
-code. Keep code and comments in English. Match the host application's shared
+CommonJS `.cjs` for Electron and Node.js utilities/tests. Module package logic is
+browser ES modules (`.js`), as required by the SDK; never use Node.js in a package.
+Keep code and comments in English. Match the host application's shared
 Russian/English dictionary when integrating visible strings.
 
 ## Verification and releases
 
 Add focused regression checks for behavior changes and verify affected existing
 paths. Validate platform-dependent behavior in the actual runtime. Report checks
-that could not be performed. There is no module implementation or test command
-yet; introduce only the build and test setup needed by the first module.
+that could not be performed. For ktalk run `npm run check`, `npm test`,
+`npm run check:catalog` and the documented
+native Electron fixture against the compatible host.
 
 This repository has its own release history. Aster Mail package versions,
 fallback versions and application release builds belong to the parent repository.
 Tag main-branch pushes with a new annotated version tag and keep this repository's
 release notes in Russian. Do not reuse or move existing tags. The initial
 documentation-only version is `v0.1.0`.
+
+## Catalog publication
+
+The client reads the catalog from the repository root `catalog.json`.
+For each release pin an immutable full commit SHA, the package SHA-256 fingerprint
+and its exact permissions. Follow `docs/CATALOG.md` for the publication contract.
+Before installation the client must independently reload the package at that
+commit, validate the manifest and resources, recompute the fingerprint and compare
+permissions. Fail closed on any mismatch, unsupported contract or invalid source.
+Never replace a pin with a mutable branch/tag during installation. Do not publish
+credentials, account data or private repositories in the public catalog.

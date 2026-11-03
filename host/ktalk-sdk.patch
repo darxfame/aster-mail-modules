@@ -1,0 +1,482 @@
+diff --git a/desktop/main.cjs b/desktop/main.cjs
+index ad514e4..fbeeb6a 100644
+--- a/desktop/main.cjs
++++ b/desktop/main.cjs
+@@ -300,7 +300,7 @@ async function connect(data, remember, restoring = false) {
+ async function installModuleBundle(bundle, guard) {
+   guard();
+   const source = bundle.source ? `${bundle.source.repository}\ncommit: ${bundle.source.commit}\n${bundle.source.directory}` : tr('Локальный пакет');
+-  const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Подключить модуль?'), detail: `${bundle.manifest.name} ${bundle.manifest.version}\n${source}\nSHA-256: ${bundle.digest}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(bundle.manifest.permissions)}\n${tr('Сетевые адреса:')} ${bundle.manifest.networkOrigins.join(', ')}\n${tr('Модуль будет выключен до настройки.')}`, buttons: [tr('Отмена'), tr('Подключить модуль')], defaultId: 0, cancelId: 0 });
++  const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Подключить модуль?'), detail: `${bundle.manifest.name} ${bundle.manifest.version}\n${source}\nSHA-256: ${bundle.digest}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(bundle.manifest.permissions)}\n${tr('Сетевые адреса:')} ${bundle.manifest.networkOrigins.join(', ')}\n${tr('Приложения встреч:')} ${require('./modules.cjs').meetingLaunchSummary(bundle.manifest)}\n${tr('Серверы входа:')} ${[...(bundle.manifest.authentication?.origins || []), ...(bundle.manifest.authentication?.identityOrigins || [])].join(', ')}\n${tr('Модуль будет выключен до настройки.')}`, buttons: [tr('Отмена'), tr('Подключить модуль')], defaultId: 0, cancelId: 0 });
+   guard(); if (answer.response === 1) await moduleHost.install(bundle);
+ }
+ 
+@@ -545,7 +545,7 @@ app.whenReady().then(async () => {
+           if (data.enabled === true) {
+             const module = (await moduleHost.catalog()).find(item => item.id === data.id); guard();
+             if (!module || module.error) throw new Error(tr('Модуль не найден'));
+-            const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Разрешить возможности модуля?'), detail: `${module.name}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(module.permissions)}\n${tr('Сетевые адреса:')} ${module.networkOrigins.join(', ')}`, buttons: [tr('Отмена'), tr('Включить')], defaultId: 0, cancelId: 0 }); guard();
++            const answer = await dialog.showMessageBox(window, { type: 'question', message: tr('Разрешить возможности модуля?'), detail: `${module.name}\n${tr('Разрешения:')} ${require('./modules.cjs').permissionSummary(module.permissions)}\n${tr('Сетевые адреса:')} ${module.networkOrigins.join(', ')}\n${tr('Приложения встреч:')} ${require('./modules.cjs').meetingLaunchSummary(module)}\n${tr('Серверы входа:')} ${[...(module.authentication?.origins || []), ...(module.authentication?.identityOrigins || [])].join(', ')}`, buttons: [tr('Отмена'), tr('Включить')], defaultId: 0, cancelId: 0 }); guard();
+             if (answer.response !== 1) return { ok: true, value: await moduleHost.catalog() };
+           }
+           await moduleHost.configure(data.id, data.enabled);
+@@ -580,7 +580,7 @@ app.whenReady().then(async () => {
+         if (client !== activeClient) throw new Error(tr('Сессия аккаунта завершена'));
+         const url = meetingLink(event);
+         if (!url || event.cancelled) throw new Error(tr('Ссылка на созвон недоступна'));
+-        await shell.openExternal(url); return { ok: true, value: true };
++        await moduleHost.openMeeting(url); return { ok: true, value: true };
+       }
+       if (operation === 'openAttachment') {
+         if (typeof data.id !== 'string' || data.id.length > 16000 || typeof data.ref?.id !== 'string' || data.ref.id.length > 16000) throw new Error('Invalid attachment');
+@@ -640,7 +640,7 @@ app.whenReady().then(async () => {
+         if (['Decline', 'Declined'].includes(meeting.response)) throw new Error(tr('Встреча отклонена. Измените ответ в карточке встречи.'));
+         const url = httpsURL(meetingLink(meeting));
+         if (!url) throw new Error(tr('Ссылка на созвон не найдена. Откройте карточку встречи.'));
+-        widgetWindow.hide(); await shell.openExternal(url);
++        widgetWindow.hide(); await moduleHost.openMeeting(url);
+       } else throw new Error('Unknown widget operation');
+       return { ok: true };
+     } catch (error) { return { ok: false, error: errorMessage(error, { operation, debug: notificationSettings.debugErrors }), userFacing: true }; }
+diff --git a/desktop/module-host.cjs b/desktop/module-host.cjs
+index 53a8e0b..666aed0 100644
+--- a/desktop/module-host.cjs
++++ b/desktop/module-host.cjs
+@@ -41,6 +41,21 @@ class ModuleHost {
+     if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
+     return result;
+   }
++  // Called only by trusted user-initiated join handlers, never exposed through module RPC.
++  async openMeeting(value) {
++    const url = new URL(value);
++    if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid meeting link');
++    const sessionId = this.current().sessionId;
++    const catalog = await this.catalog();
++    if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
++    const route = catalog.find(item => item.enabled && !item.error && M.meetingTarget(item, value));
++    const target = route ? M.meetingTarget(route, value) : value;
++    // Check registration before launching; do not silently open a second target on failure.
++    if (route && !await this.electron.app.getApplicationNameForProtocol(target)) throw new Error(tr('Приложение встречи не установлено. Откройте ссылку в браузере.'));
++    if (this.current().sessionId !== sessionId) throw new Error(tr('Сессия аккаунта завершена'));
++    if (route && !this.records().some(item => item.id === route.id && item.enabled && item.digest === route.digest)) throw new Error(tr('Модуль выключен или не настроен'));
++    await this.electron.shell.openExternal(target);
++  }
+   async install(bundle) {
+     if (this.records().some(record => record.id === bundle.manifest.id)) throw new Error(tr('Модуль уже подключён. Сначала удалите прежнюю версию.'));
+     if (this.records().length >= 8) throw new Error(tr('Достигнут лимит подключённых модулей'));
+@@ -67,6 +82,7 @@ class ModuleHost {
+   stop(id) {
+     const entry = this.entries.get(id); if (!entry) return;
+     entry.retired = true; entry.controller.abort(); this.entries.delete(id);
++    require('./module-auth.cjs').closeAuthentication(entry);
+     entry.readyReject?.(new Error(tr('Модуль остановлен')));
+     for (const pending of this.pending.values()) if (pending.entry === entry) pending.reject(new Error(tr('Модуль остановлен')));
+     for (const [key, view] of this.views) if (view.entry === entry) this.closeView(key);
+@@ -155,9 +171,24 @@ class ModuleHost {
+       if (method === 'ready' && role === 'runtime') { entry.readyResolve(); return true; }
+       if (method === 'command' && role !== 'runtime') return this.invoke(entry.id, input.command, input.input, this.senders.get(event.sender).context);
+       const definition = entry.bundle.manifest;
+-      const permission = { 'ui.context': 'ui', 'ui.openView': 'ui', 'network.request': 'network', 'storage.get': 'storage', 'storage.set': 'storage', 'calendar.list': 'calendar.read', 'meeting.getDraft': 'meeting.draft', 'meeting.openDraft': 'meeting.draft', 'meeting.patchDraft': 'meeting.draft', 'events.publish': 'events' }[method];
++      const permission = { 'ui.context': 'ui', 'ui.openView': 'ui', 'network.request': 'network', 'storage.get': 'storage', 'storage.set': 'storage', 'calendar.list': 'calendar.read', 'meeting.getDraft': 'meeting.draft', 'meeting.openDraft': 'meeting.draft', 'meeting.patchDraft': 'meeting.draft', 'events.publish': 'events', 'auth.signIn': 'auth.session', 'auth.status': 'auth.session', 'auth.signOut': 'auth.session' }[method];
+       if (!permission || !definition.permissions.includes(permission)) throw Object.assign(new Error(tr('Недостаточно разрешений модуля')), { code: 'permission-denied' });
+-      if (method === 'network.request') return await M.requestJSON(this.electron.net, entry.network, definition, input, entry.controller.signal);
++      if (method === 'auth.status') return require('./module-auth.cjs').authenticationStatus(this, entry);
++      if (method === 'auth.signIn') return await require('./module-auth.cjs').signIn(this, entry, input);
++      if (method === 'auth.signOut') {
++        if (!entry.context) throw new Error('User action required');
++        require('./module-auth.cjs').closeAuthentication(entry);
++        await this.update(records => { this.current(entry); const record = records.find(record => record.id === entry.id); if (record) delete record.auth; }); return true;
++      }
++      if (method === 'network.request') {
++        let token = null;
++        if (input.auth !== undefined) {
++          const auth = this.records().find(record => record.id === entry.id)?.auth;
++          if (input.auth !== 'session' || !definition.permissions.includes('auth.session') || !definition.authentication?.origins.includes(new URL(input.url).origin) || !auth || auth.origin !== new URL(input.url).origin || Date.parse(auth.expiresAt) <= Date.now() || input.bearer !== undefined || Object.keys(input.headers || {}).length) throw Object.assign(new Error('Service sign-in required'), { code: 'permission-denied' });
++          token = auth.token;
++        }
++        return await M.requestJSON(this.electron.net, entry.network, definition, input, entry.controller.signal, token);
++      }
+       if (method === 'storage.get') { const record = this.records().find(record => record.id === entry.id); return M.bounded(record ? record.data : {}, 16000); }
+       if (method === 'storage.set') { const value = M.bounded(input, 16000); await this.update(records => { this.current(entry); const record = records.find(record => record.id === entry.id); if (!record || !record.enabled) throw new Error(tr('Модуль остановлен')); record.data = value; }); this.current(entry); return true; }
+       if (method === 'events.publish') { if (!/^[a-z][a-z0-9.-]{0,60}$/.test(input.topic)) throw new Error('Invalid module topic'); this.publish(`${entry.id}.${input.topic}`, input.data ?? null); return true; }
+diff --git a/desktop/module-preload.cjs b/desktop/module-preload.cjs
+index aa7b799..58ef091 100644
+--- a/desktop/module-preload.cjs
++++ b/desktop/module-preload.cjs
+@@ -1,9 +1,12 @@
+ const { contextBridge, ipcRenderer } = require('electron');
+ let handler;
+ function bounded(value) { const json = JSON.stringify(value); if (!json || json.length > 65536) throw new Error('Module message too large'); return JSON.parse(json); }
+-async function call(method, input = {}) {
++async function request(method, input = {}) {
+   if (typeof method !== 'string' || method.length > 80) throw new Error('Invalid module method');
+-  const result = await ipcRenderer.invoke('aster-module-api', method, bounded(input));
++  return bounded(await ipcRenderer.invoke('aster-module-api', method, bounded(input)));
++}
++async function call(method, input = {}) {
++  const result = await request(method, input);
+   if (!result?.ok) throw Object.assign(new Error(result?.error || 'Module request failed'), { code: result?.code || 'module-request-rejected', status: result?.status });
+   return result.value;
+ }
+@@ -16,6 +19,7 @@ ipcRenderer.on('aster-module-command', async (_event, request) => {
+ });
+ contextBridge.exposeInMainWorld('asterModule', {
+   call,
++  request,
+   command: (command, input = {}) => call('command', { command, input }),
+   onCommand: callback => { if (typeof callback === 'function') handler = callback; },
+   ready: () => call('ready', {}),
+diff --git a/desktop/module-runtime.mjs b/desktop/module-runtime.mjs
+index 2088a3f..c57c77c 100644
+--- a/desktop/module-runtime.mjs
++++ b/desktop/module-runtime.mjs
+@@ -1,6 +1,13 @@
+ const bridge = window.asterModule;
+ const plugin = await import('/package/' + new URL(location.href).searchParams.get('main'));
+-const api = Object.freeze({ call: bridge.call, onEvent: bridge.onEvent });
++// Error custom properties do not survive Electron contextBridge. Transfer JSON and
++// reconstruct the error in the module's world so HTTP 404 is distinguishable.
++async function call(method, input = {}) {
++  const result = await bridge.request(method, input);
++  if (!result?.ok) throw Object.assign(new Error(result?.error || 'Module request failed'), { code: result?.code || 'module-request-rejected', status: result?.status });
++  return result.value;
++}
++const api = Object.freeze({ call, onEvent: bridge.onEvent });
+ const instance = await plugin.activate(api);
+ bridge.onCommand(async (command, input, context) => {
+   if (!Object.hasOwn(instance.commands || {}, command) || typeof instance.commands[command] !== 'function') throw new Error('Unknown command');
+diff --git a/desktop/modules.cjs b/desktop/modules.cjs
+index 9471782..4fbb07a 100644
+--- a/desktop/modules.cjs
++++ b/desktop/modules.cjs
+@@ -2,15 +2,16 @@ const fs = require('node:fs/promises');
+ const path = require('node:path');
+ const crypto = require('node:crypto');
+ const tr = require('../src/i18n.js').text;
+-const permissions = ['ui', 'network', 'storage', 'calendar.read', 'meeting.draft', 'events'];
++const permissions = ['ui', 'network', 'storage', 'calendar.read', 'meeting.draft', 'meeting.launch', 'auth.session', 'events'];
++const features = Object.freeze(['meeting.launch', 'auth.ktalk-session', 'rpc.error-details']);
+ function invalid() { throw new Error(tr('Некорректный модуль или неподдерживаемая версия API')); }
+ function text(value, maximum = 80) { if (typeof value !== 'string' || !value.trim() || value.length > maximum || /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(value)) invalid(); return value; }
+ function relative(value) { text(value, 200); if (!/^[a-zA-Z0-9][a-zA-Z0-9_./-]*$/.test(value) || value.split('/').some(part => !part || part === '.' || part === '..')) invalid(); return value; }
+-function origin(value) { const url = new URL(value); if (url.protocol !== 'https:' || url.username || url.password || url.hash || url.href !== `${url.origin}/`) invalid(); return url.origin; }
++function origin(value) { const url = new URL(value); if (url.protocol !== 'https:' || url.username || url.password || url.hostname.includes('*') || url.hash || url.href !== `${url.origin}/`) invalid(); return url.origin; }
+ function bounded(value, maximum = 65536) { const encoded = JSON.stringify(value); if (!encoded || Buffer.byteLength(encoded) > maximum) invalid(); return JSON.parse(encoded); }
+ function manifest(input) {
+   const m = bounded(input, 16000);
+-  if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).some(key => !['apiVersion', 'id', 'version', 'type', 'name', 'main', 'files', 'permissions', 'networkOrigins', 'networkHeaders', 'commands', 'views'].includes(key))) invalid();
++  if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).some(key => !['apiVersion', 'id', 'version', 'type', 'name', 'main', 'files', 'permissions', 'networkOrigins', 'networkHeaders', 'meetingLinks', 'authentication', 'commands', 'views'].includes(key))) invalid();
+   if (m.apiVersion !== 1 || !/^[a-z][a-z0-9.-]{2,79}$/.test(m.id) || typeof m.version !== 'string' || m.version.length > 40 || !/^\d+\.\d+\.\d+$/.test(m.version) || !['integration', 'workflow', 'panel', 'hybrid'].includes(m.type)) invalid();
+   text(m.name); relative(m.main); if (!/\.m?js$/.test(m.main)) invalid();
+   if (!Array.isArray(m.files) || !m.files.length || m.files.length > 199 || new Set(m.files.map(value => String(value).toLowerCase())).size !== m.files.length) invalid();
+@@ -21,6 +22,21 @@ function manifest(input) {
+   if (m.networkOrigins.length > 8 || m.networkOrigins.length && !m.permissions.includes('network')) invalid();
+   m.networkHeaders = (m.networkHeaders || []).map(value => { if (typeof value !== 'string' || !/^x-[a-z][a-z0-9-]{0,63}$/i.test(value)) invalid(); return value.toLowerCase(); });
+   if (m.networkHeaders.length > 8 || m.networkHeaders.length && !m.permissions.includes('network')) invalid();
++  if (m.meetingLinks !== undefined) {
++    const links = m.meetingLinks;
++    // No arbitrary external protocols or executable paths. Add schemes only after runtime review.
++    if (!links || typeof links !== 'object' || Array.isArray(links) || Object.keys(links).some(key => !['scheme', 'origins'].includes(key)) || links.scheme !== 'ktalk' || !m.permissions.includes('meeting.launch') || !Array.isArray(links.origins) || !links.origins.length || links.origins.length > 8) invalid();
++    links.origins = links.origins.map(origin);
++    if (new Set(links.origins).size !== links.origins.length) invalid();
++  }
++  if (m.permissions.includes('meeting.launch') && !m.meetingLinks) invalid();
++  if (m.authentication !== undefined) {
++    const auth = m.authentication;
++    if (!auth || typeof auth !== 'object' || Array.isArray(auth) || Object.keys(auth).some(key => !['type', 'origins', 'identityOrigins'].includes(key)) || auth.type !== 'ktalk-session' || !m.permissions.includes('auth.session') || !m.permissions.includes('network') || !Array.isArray(auth.origins) || !auth.origins.length || auth.origins.length > 8 || !Array.isArray(auth.identityOrigins) || auth.identityOrigins.length > 8) invalid();
++    auth.origins = auth.origins.map(origin); auth.identityOrigins = auth.identityOrigins.map(origin);
++    if (auth.origins.some(value => !m.networkOrigins.includes(value)) || new Set(auth.origins).size !== auth.origins.length || new Set(auth.identityOrigins).size !== auth.identityOrigins.length) invalid();
++  }
++  if (m.permissions.includes('auth.session') && !m.authentication) invalid();
+   const ids = new Set();
+   for (const key of ['commands', 'views']) {
+     m[key] ||= []; if (!Array.isArray(m[key]) || m[key].length > 12) invalid();
+@@ -85,11 +101,12 @@ function records(input) {
+     recordDirectory('', record); ids.add(record.id);
+     if (record.source && (record.source.type !== 'github' || !/^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(record.source.repository) || !/^[a-f0-9]{40}$/.test(record.source.commit))) invalid();
+     if (record.source?.directory) relative(record.source.directory);
+-    return { ...(record.source ? { source: bounded(record.source, 1000) } : {}), id: record.id, version: record.version, digest: record.digest, enabled: record.enabled, data: bounded(record.data === undefined ? {} : record.data, 16000) };
++    if (record.auth && (typeof record.auth.origin !== 'string' || origin(record.auth.origin) !== record.auth.origin || typeof record.auth.token !== 'string' || !record.auth.token || record.auth.token.length > 4096 || /\s/.test(record.auth.token) || typeof record.auth.expiresAt !== 'string' || !Number.isFinite(Date.parse(record.auth.expiresAt)))) invalid();
++    return { ...(record.source ? { source: bounded(record.source, 1000) } : {}), ...(record.auth ? { auth: { origin: record.auth.origin, token: record.auth.token, expiresAt: record.auth.expiresAt } } : {}), id: record.id, version: record.version, digest: record.digest, enabled: record.enabled, data: bounded(record.data === undefined ? {} : record.data, 16000) };
+   });
+ }
+ // The sandbox's only network path. No account transport, cookies, redirects or retries.
+-function requestJSON(net, isolatedSession, definition, data, signal) {
++function requestJSON(net, isolatedSession, definition, data, signal, sessionToken = null) {
+   bounded(data); const url = new URL(data.url);
+   if (!definition.permissions.includes('network') || !definition.networkOrigins.includes(url.origin) || url.protocol !== 'https:' || url.username || url.password || url.hash || !['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(data.method || 'GET')) invalid();
+   const headers = data.headers || {};
+@@ -111,12 +128,28 @@ function requestJSON(net, isolatedSession, definition, data, signal) {
+     });
+     request.setHeader('Content-Type', 'application/json'); request.setHeader('Accept', 'application/json');
+     for (const [name, value] of Object.entries(headers)) request.setHeader(name, value);
++    if (sessionToken !== null) {
++      if (typeof sessionToken !== 'string' || !sessionToken || sessionToken.length > 4096 || /\s/.test(sessionToken) || data.bearer !== undefined) { cancel(); return; }
++      request.setHeader('Authorization', `Session ${sessionToken}`);
++    }
+     if (data.bearer !== undefined) { if (typeof data.bearer !== 'string' || data.bearer.length > 4096 || /[\r\n]/.test(data.bearer)) { cancel(); return; } request.setHeader('Authorization', `Bearer ${data.bearer}`); }
+     request.end(data.body === undefined ? undefined : JSON.stringify(data.body));
+   });
+ }
+ function permissionSummary(values) {
+-  const labels = { ui: tr('Открытие собственных панелей'), network: tr('Доступ к указанным сервисам'), storage: tr('Защищённые настройки модуля'), 'calendar.read': tr('Чтение основного календаря'), 'meeting.draft': tr('Заполнение черновика встречи'), events: tr('События приложения и модулей') };
++  const labels = { ui: tr('Открытие собственных панелей'), network: tr('Доступ к указанным сервисам'), storage: tr('Защищённые настройки модуля'), 'calendar.read': tr('Чтение основного календаря'), 'meeting.draft': tr('Заполнение черновика встречи'), 'meeting.launch': tr('Запуск приложения встречи по нажатию «Подключиться»'), 'auth.session': tr('Корпоративный вход в отдельное пространство сервиса'), events: tr('События приложения и модулей') };
+   return values.map(value => labels[value]).join(', ');
+ }
+-module.exports = { fromFiles, relative, records, permissionSummary, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };
++function meetingTarget(definition, value) {
++  if (!definition.permissions.includes('meeting.launch') || !definition.meetingLinks) return null;
++  if (typeof value !== 'string' || value.length > 2000 || /[\s\\]/.test(value)) return null;
++  if (!/^https:\/\/[^/?#]+\/[a-z0-9_-]{1,200}\/?(?:[?#]|$)/i.test(value)) return null;
++  let url; try { url = new URL(value); } catch { return null; }
++  if (url.protocol !== 'https:' || url.username || url.password || !definition.meetingLinks.origins.includes(url.origin) || !/^\/[a-z0-9_-]{1,200}\/?$/i.test(url.pathname) || /^\/(?:api|auth|login|download|settings|admin|oauth|calendar)\/?$/i.test(url.pathname)) return null;
++  if (definition.meetingLinks.scheme !== 'ktalk') return null;
++  return url.href.replace(/^https:/, 'ktalk:');
++}
++function meetingLaunchSummary(definition) {
++  return definition.meetingLinks ? `${definition.meetingLinks.scheme} → ${definition.meetingLinks.origins.join(', ')}` : '';
++}
++module.exports = { features, fromFiles, relative, records, permissionSummary, meetingTarget, meetingLaunchSummary, manifest, readPackage, installPackage, recordDirectory, bounded, requestJSON };
+diff --git a/docs/modules/module.schema.json b/docs/modules/module.schema.json
+index 1a1ec58..89e86d8 100644
+--- a/docs/modules/module.schema.json
++++ b/docs/modules/module.schema.json
+@@ -54,10 +54,31 @@
+           "storage",
+           "calendar.read",
+           "meeting.draft",
++          "meeting.launch",
++          "auth.session",
+           "events"
+         ]
+       }
+     },
++    "authentication": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["type", "origins", "identityOrigins"],
++      "properties": {
++        "type": { "const": "ktalk-session" },
++        "origins": { "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": { "type": "string", "format": "uri", "pattern": "^https://" } },
++        "identityOrigins": { "type": "array", "maxItems": 8, "uniqueItems": true, "items": { "type": "string", "format": "uri", "pattern": "^https://" } }
++      }
++    },
++    "meetingLinks": {
++      "type": "object",
++      "additionalProperties": false,
++      "required": ["scheme", "origins"],
++      "properties": {
++        "scheme": { "const": "ktalk" },
++        "origins": { "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": { "type": "string", "format": "uri", "pattern": "^https://" } }
++      }
++    },
+     "networkOrigins": {
+       "type": "array",
+       "maxItems": 8,
+diff --git a/package.json b/package.json
+index 0cc7cf3..fc2849f 100644
+--- a/package.json
++++ b/package.json
+@@ -15,7 +15,7 @@
+     "preview:modules": "electron scripts/preview-modules.cjs",
+     "test:modules": "electron scripts/test-native-modules.cjs",
+     "test:connection": "electron scripts/test-native-connection.cjs",
+-    "check": "node --check scripts/preview-modules.cjs && node --check scripts/xerj.cjs && node --check scripts/check-module.cjs && node --check desktop/module-github.cjs && node --check desktop/module-host.cjs && node --check desktop/module-preload.cjs && node --check desktop/module-runtime.mjs && node --check scripts/test-native-modules.cjs && node --check desktop/modules.cjs && node --check src/modules-ui.js && node --check src/i18n.js && node --check desktop/attachment-previews.cjs && node --check desktop/compose-attachments.cjs && node --check desktop/raster-images.cjs && node --check desktop/attachment-trust.cjs && node --check desktop/attachment-files.cjs && node --check src/mail-find.js && node --check desktop/transport.cjs && node --check desktop/local-store.cjs && node --check desktop/folder-actions.cjs && node --check desktop/mail-cache.cjs && node --check desktop/mail-batch.cjs && node --check src/mail-batch.js && node --check src/mail-ui.js && node --check src/people-ui.js && node --check desktop/directory.cjs && node --check desktop/mail-rules.cjs && node --check desktop/updates.cjs && node --check src/server.js && node --check src/updates-ui.js && node --check desktop/preload.cjs && node --check desktop/sharing-privacy.cjs && node --check desktop/main.cjs && node --check desktop/owa.cjs && node --check desktop/mail-drafts.cjs && node --check desktop/owa-outgoing.cjs && node --check desktop/protocol.cjs && node --check src/time.js && node --check src/mail-editor.js && node --check src/rich-content.js && node --check desktop/content-images.cjs && node --check src/app.js && node --check desktop/meetings.cjs && node --check desktop/widget-preload.cjs && node --check src/widget.js && node --check src/calendar-layout.js && node --check src/calendar-ui.js && node --check src/calendar.js && node --check desktop/availability.cjs && node --check src/meeting-conflicts.js && node --check desktop/meeting-conflicts.cjs && node --check src/availability.js && node --check desktop/calendar-events.cjs && node --check src/events.js && node --check src/folders.js && node --check src/sidebar-ui.js && node --check src/recipients.js && node --check src/meeting-ui.js && node --check desktop/compose-windows.cjs && node --check src/compose-ui.js && node --check scripts/setup-mac-signing.cjs && node --check src/errors.js",
++    "check": "node --check scripts/preview-modules.cjs && node --check scripts/xerj.cjs && node --check scripts/check-module.cjs && node --check desktop/module-github.cjs && node --check desktop/module-auth.cjs && node --check desktop/module-host.cjs && node --check desktop/module-preload.cjs && node --check desktop/module-runtime.mjs && node --check scripts/test-native-modules.cjs && node --check desktop/modules.cjs && node --check src/modules-ui.js && node --check src/i18n.js && node --check desktop/attachment-previews.cjs && node --check desktop/compose-attachments.cjs && node --check desktop/raster-images.cjs && node --check desktop/attachment-trust.cjs && node --check desktop/attachment-files.cjs && node --check src/mail-find.js && node --check desktop/transport.cjs && node --check desktop/local-store.cjs && node --check desktop/folder-actions.cjs && node --check desktop/mail-cache.cjs && node --check desktop/mail-batch.cjs && node --check src/mail-batch.js && node --check src/mail-ui.js && node --check src/people-ui.js && node --check desktop/directory.cjs && node --check desktop/mail-rules.cjs && node --check desktop/updates.cjs && node --check src/server.js && node --check src/updates-ui.js && node --check desktop/preload.cjs && node --check desktop/sharing-privacy.cjs && node --check desktop/main.cjs && node --check desktop/owa.cjs && node --check desktop/mail-drafts.cjs && node --check desktop/owa-outgoing.cjs && node --check desktop/protocol.cjs && node --check src/time.js && node --check src/mail-editor.js && node --check src/rich-content.js && node --check desktop/content-images.cjs && node --check src/app.js && node --check desktop/meetings.cjs && node --check desktop/widget-preload.cjs && node --check src/widget.js && node --check src/calendar-layout.js && node --check src/calendar-ui.js && node --check src/calendar.js && node --check desktop/availability.cjs && node --check src/meeting-conflicts.js && node --check desktop/meeting-conflicts.cjs && node --check src/availability.js && node --check desktop/calendar-events.cjs && node --check src/events.js && node --check src/folders.js && node --check src/sidebar-ui.js && node --check src/recipients.js && node --check src/meeting-ui.js && node --check desktop/compose-windows.cjs && node --check src/compose-ui.js && node --check scripts/setup-mac-signing.cjs && node --check src/errors.js",
+     "pack:mac": "electron-builder --mac --arm64 --dir",
+     "dist:mac": "electron-builder --mac dmg --arm64",
+     "dist:win": "electron-builder --win nsis",
+diff --git a/src/i18n.js b/src/i18n.js
+index 5daa4de..e1236aa 100644
+--- a/src/i18n.js
++++ b/src/i18n.js
+@@ -28,6 +28,13 @@
+     "Защищённые настройки модуля": "Encrypted module settings",
+     "Чтение основного календаря": "Read the primary calendar",
+     "Заполнение черновика встречи": "Fill in a meeting draft",
++    "Запуск приложения встречи по нажатию «Подключиться»": "Launch the meeting app when Join is clicked",
++    "Приложения встреч:": "Meeting applications:",
++    "Корпоративный вход": "Corporate sign-in",
++    "Корпоративный вход в отдельное пространство сервиса": "Corporate sign-in to an isolated service workspace",
++    "Не удалось открыть корпоративный вход": "Could not open corporate sign-in",
++    "Серверы входа:": "Sign-in origins:",
++    "Приложение встречи не установлено. Откройте ссылку в браузере.": "The meeting app is not installed. Open the link in your browser.",
+     "События приложения и модулей": "Application and module events",
+     "Модули работают в песочнице. Разрешения включаются отдельно для каждого аккаунта.": "Modules run in a sandbox. Permissions are enabled separately for each account.",
+     "Разрешения:": "Permissions:",
+diff --git a/desktop/module-auth.cjs b/desktop/module-auth.cjs
+new file mode 100644
+index 0000000..5e810ed
+--- /dev/null
++++ b/desktop/module-auth.cjs
+@@ -0,0 +1,91 @@
++const crypto = require('node:crypto');
++const M = require('./modules.cjs');
++const tr = require('../src/i18n.js').text;
++
++// Read only the provider's session envelope, in an isolated world on its exact origin.
++const sessionScript = `(() => {
++  try {
++    const raw = localStorage.getItem('session');
++    if (!raw || raw.length > 16000) return null;
++    const value = JSON.parse(raw), data = value.data;
++    if (!data || data.anonymous || typeof data.token !== 'string' || !data.expiresAt) return null;
++    return { token: data.token, expiresAt: data.expiresAt };
++  } catch { return null; }
++})()`;
++function sessionValue(value, origin, now = Date.now()) {
++  if (!value || typeof value.token !== 'string' || !value.token || value.token.length > 4096 || /\s/.test(value.token) || !Number.isFinite(Date.parse(value.expiresAt)) || Date.parse(value.expiresAt) <= now) return null;
++  return { origin, token: value.token, expiresAt: new Date(value.expiresAt).toISOString() };
++}
++function allowedNavigation(value, origins) {
++  try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password && origins.includes(url.origin); } catch { return false; }
++}
++function authenticationStatus(host, entry) {
++  host.current(entry);
++  const session = host.records().find(item => item.id === entry.id)?.auth;
++  const valid = sessionValue(session, session?.origin);
++  return { connected: Boolean(valid), origin: valid?.origin || null, expiresAt: valid?.expiresAt || null, pending: Boolean(entry.authFlow), blockedOrigin: entry.authBlockedOrigin || null };
++}
++function closeAuthentication(entry) { entry.authFlow?.close(); }
++
++async function signIn(host, entry, input) {
++  host.current(entry);
++  if (!entry.context || !entry.bundle.manifest.authentication?.origins.includes(input.origin)) throw new Error('Authentication not declared');
++  if (entry.authFlow) { entry.authFlow.window.focus(); return authenticationStatus(host, entry); }
++  const origin = input.origin, origins = [...entry.bundle.manifest.authentication.origins, ...entry.bundle.manifest.authentication.identityOrigins];
++  const isolated = host.electron.session.fromPartition(`aster-module-auth-${crypto.randomUUID()}`, { cache: false });
++  isolated.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
++  isolated.setPermissionCheckHandler(() => false); isolated.on('will-download', event => event.preventDefault());
++  isolated.webRequest.onBeforeRequest((request, callback) => callback({ cancel: !/^(https:|data:|blob:|about:)/.test(request.url) }));
++  const preferences = { session: isolated, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, webviewTag: false, spellcheck: false };
++  const window = new host.electron.BrowserWindow({ width: 960, height: 740, title: `${tr('Корпоративный вход')} · ${origin}`, autoHideMenuBar: true, webPreferences: preferences });
++  const windows = new Set(); let closed = false, reading = false, timer, interval;
++  entry.authBlockedOrigin = null;
++  const close = () => {
++    if (closed) return; closed = true; clearTimeout(timer); clearInterval(interval);
++    if (entry.authFlow?.window === window) entry.authFlow = null;
++    for (const item of windows) if (!item.isDestroyed()) item.destroy();
++    void Promise.allSettled([isolated.clearStorageData(), isolated.closeAllConnections()]);
++  };
++  entry.authFlow = { window, close };
++  const navigation = (event, value) => {
++    const url = value || event.url;
++    if (allowedNavigation(url, origins)) return;
++    event.preventDefault();
++    try { const parsed = new URL(url); entry.authBlockedOrigin = parsed.protocol === 'https:' ? parsed.origin : null; } catch { /* Never expose query strings from login redirects. */ }
++  };
++  const protect = item => {
++    windows.add(item);
++    item.webContents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
++    item.webContents.on('will-navigate', navigation); item.webContents.on('will-redirect', navigation);
++    item.webContents.on('will-attach-webview', event => event.preventDefault());
++    item.webContents.setWindowOpenHandler(({ url }) => {
++      if (windows.size >= 3 || url !== 'about:blank' && !allowedNavigation(url, origins)) { navigation({ preventDefault() {} }, url); return { action: 'deny' }; }
++      return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: preferences, autoHideMenuBar: true } };
++    });
++    item.webContents.on('did-create-window', protect);
++    item.on('closed', () => { windows.delete(item); if (item === window) close(); });
++  };
++  protect(window);
++  interval = setInterval(async () => {
++    if (reading || closed) return; reading = true;
++    try {
++      host.current(entry);
++      for (const item of windows) {
++        if (item.isDestroyed() || new URL(item.webContents.getURL() || 'about:blank').origin !== origin) continue;
++        const frame = item.webContents.mainFrame;
++        const raw = await item.webContents.executeJavaScriptInIsolatedWorld(999, [{ code: sessionScript }]);
++        if (closed || item.isDestroyed() || item.webContents.mainFrame !== frame || new URL(item.webContents.getURL()).origin !== origin) continue;
++        host.current(entry);
++        const auth = sessionValue(raw, origin);
++        if (!auth) continue;
++        await host.update(records => { host.current(entry); if (closed) throw new Error('Authentication closed'); const record = records.find(record => record.id === entry.id && record.enabled); if (!record) throw new Error('Module disabled'); record.auth = auth; });
++        close(); break;
++      }
++    } catch { if (entry.retired) close(); /* Polling never logs credentials or page contents. */ }
++    finally { reading = false; }
++  }, 700);
++  timer = setTimeout(close, 5 * 60000);
++  try { await window.loadURL(origin); } catch { close(); throw new Error(tr('Не удалось открыть корпоративный вход')); }
++  return authenticationStatus(host, entry);
++}
++module.exports = { sessionScript, sessionValue, allowedNavigation, authenticationStatus, closeAuthentication, signIn };
+diff --git a/test/module-auth.test.cjs b/test/module-auth.test.cjs
+new file mode 100644
+index 0000000..7f9f6d7
+--- /dev/null
++++ b/test/module-auth.test.cjs
+@@ -0,0 +1,73 @@
++const test = require('node:test');
++const assert = require('node:assert/strict');
++const { EventEmitter } = require('node:events');
++const M = require('../desktop/modules.cjs');
++const A = require('../desktop/module-auth.cjs');
++const { ModuleHost } = require('../desktop/module-host.cjs');
++const example = require('../examples/modules/sandbox-demo/module.json');
++const definition = () => M.manifest({ ...example, permissions: ['network', 'storage', 'meeting.launch', 'auth.session'], networkOrigins: ['https://company.ktalk.ru'], meetingLinks: { scheme: 'ktalk', origins: ['https://company.ktalk.ru'] }, authentication: { type: 'ktalk-session', origins: ['https://company.ktalk.ru'], identityOrigins: ['https://sso.example.test'] } });
++test('native routes and corporate auth require explicit permissions, exact origins and vetted schemes', () => {
++  const value = definition();
++  assert.equal(M.meetingTarget(value, 'https://company.ktalk.ru/test_room?pin=1234'), 'ktalk://company.ktalk.ru/test_room?pin=1234');
++  for (const input of ['http://company.ktalk.ru/test_room', 'https://evil.test/test_room', 'https://company.ktalk.ru.evil.test/test_room', 'https://x@company.ktalk.ru/test_room', 'https://company.ktalk.ru/api', 'https://company.ktalk.ru/%2e%2e/a', 'https://company.ktalk.ru/a/b']) assert.equal(M.meetingTarget(value, input), null);
++  assert.equal(M.meetingTarget(M.manifest(example), 'https://company.ktalk.ru/test_room'), null);
++  for (const patch of [
++    { meetingLinks: { scheme: 'file', origins: ['https://company.ktalk.ru'] } },
++    { meetingLinks: { scheme: 'ktalk', origins: ['https://*.ktalk.ru'] } },
++    { authentication: { ...value.authentication, origins: ['https://evil.test'] } },
++    { permissions: ['network', 'storage'] }
++  ]) assert.throws(() => M.manifest({ ...value, ...patch }));
++});
++function fixture() {
++  const route = definition(), calls = [];
++  const active = { sessionId: 'fictional', signal: new AbortController().signal, records: [{ id: route.id, version: route.version, digest: 'a'.repeat(64), enabled: true, data: {}, auth: { origin: 'https://company.ktalk.ru', token: 'fictional-private-session', expiresAt: '2099-01-01T00:00:00Z' } }] };
++  const electron = { ipcMain: { handle() {}, on() {} }, app: { getApplicationNameForProtocol: () => 'Fictional KTalk' }, shell: { openExternal: async url => { calls.push(url); } } };
++  const host = new ModuleHost({ electron, scope: () => active, save: async records => { active.records = records; } });
++  host.bundle = async () => ({ manifest: route, digest: active.records[0].digest });
++  const entry = { id: route.id, sessionId: active.sessionId, calls: 0, bundle: { manifest: route }, controller: new AbortController(), context: {} };
++  const sender = { mainFrame: {} }; host.senders.set(sender, { entry, role: 'runtime' });
++  return { host, electron, active, entry, calls, event: { sender, senderFrame: sender.mainFrame } };
++}
++test('join launches once, preserves ordinary links, honors disable, retirement and missing applications', async () => {
++  const f = fixture();
++  await f.host.openMeeting('https://company.ktalk.ru/test_room');
++  await f.host.openMeeting('https://meet.google.com/fictional');
++  assert.deepEqual(f.calls, ['ktalk://company.ktalk.ru/test_room', 'https://meet.google.com/fictional']);
++  f.active.records[0].enabled = false;
++  await f.host.openMeeting('https://company.ktalk.ru/test_room'); assert.equal(f.calls.at(-1), 'https://company.ktalk.ru/test_room');
++  f.active.records[0].enabled = true;
++  f.electron.app.getApplicationNameForProtocol = () => ''; await assert.rejects(f.host.openMeeting('https://company.ktalk.ru/test_room')); assert.equal(f.calls.length, 3);
++  f.electron.app.getApplicationNameForProtocol = () => { f.active.sessionId = 'retired'; return 'KTalk'; };
++  await assert.rejects(f.host.openMeeting('https://company.ktalk.ru/test_room')); assert.equal(f.calls.length, 3);
++});
++test('auth session remains out of catalog and storage, is origin bound and can be explicitly deleted', async () => {
++  const f = fixture();
++  const status = await f.host.receive(f.event, 'auth.status', {});
++  assert.equal(status.connected, true); assert.doesNotMatch(JSON.stringify(status), /private-session/);
++  assert.deepEqual(await f.host.receive(f.event, 'storage.get', {}), {});
++  assert.doesNotMatch(JSON.stringify(await f.host.catalog()), /private-session/);
++  await assert.rejects(f.host.receive(f.event, 'network.request', { url: 'https://evil.test/api/Rooms/test', auth: 'session' }));
++  await assert.rejects(f.host.receive(f.event, 'network.request', { url: 'https://company.ktalk.ru/api/Rooms/test', auth: 'session', bearer: 'other' }));
++  f.entry.context = null; await assert.rejects(f.host.receive(f.event, 'auth.signOut', {}));
++  f.entry.context = {}; await f.host.receive(f.event, 'auth.signOut', {});
++  assert.equal(f.active.records[0].auth, undefined);
++});
++test('provider navigation and token parsing reject hostile origins, expired and anonymous sessions', () => {
++  const origins = ['https://company.ktalk.ru', 'https://sso.example.test'];
++  assert.equal(A.allowedNavigation('https://sso.example.test/login?state=fictional', origins), true);
++  for (const url of ['http://sso.example.test', 'https://evil.test', 'file:///tmp/test', 'https://x@sso.example.test', 'https://sso.example.test.evil.test']) assert.equal(A.allowedNavigation(url, origins), false);
++  assert.equal(A.sessionValue({ token: 'bad\r\ntoken', expiresAt: '2099-01-01' }, origins[0]), null);
++  assert.equal(A.sessionValue({ token: 'fictional', expiresAt: '2001-01-01' }, origins[0]), null);
++  const vm = require('node:vm');
++  const read = value => vm.runInNewContext(A.sessionScript, { localStorage: { getItem: () => JSON.stringify(value) } });
++  assert.equal(read({ data: { token: 'fictional', anonymous: true, expiresAt: '2099-01-01' } }), null);
++  assert.equal(read({ data: { token: 'fictional', expiresAt: '2099-01-01' } }).token, 'fictional');
++});
++test('session transport injects only scoped Session authorization and does not use cookies', async () => {
++  let request, options;
++  const net = { request(value) { options = value; request = Object.assign(new EventEmitter(), { headers: {}, setHeader(k, v) { this.headers[k] = v; }, end() {}, abort() {} }); return request; } };
++  const promise = M.requestJSON(net, {}, definition(), { url: 'https://company.ktalk.ru/api/Rooms/test', auth: 'session' }, new AbortController().signal, 'fictional-token');
++  assert.equal(request.headers.Authorization, 'Session fictional-token'); assert.equal(options.useSessionCookies, false); assert.equal(options.credentials, 'omit');
++  const response = Object.assign(new EventEmitter(), { statusCode: 200 }); request.emit('response', response); response.emit('data', Buffer.from('{"roomName":"test"}')); response.emit('end');
++  assert.deepEqual(await promise, { roomName: 'test' });
++});

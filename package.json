@@ -1,0 +1,13 @@
+{
+  "name": "aster-mail-modules",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "check": "node scripts/check.cjs",
+    "test": "node --test test/*.test.cjs",
+    "package:ktalk": "node scripts/package-ktalk.cjs",
+    "check:catalog": "node scripts/catalog.cjs"
+  }
+}

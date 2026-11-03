@@ -6,6 +6,11 @@ the parent directory.
 
 ## Required context
 
+Read `docs/DEVELOPMENT.md`, `CONTRIBUTING.md` and `docs/SECURITY-REVIEW.md` before
+adding or publishing a module. Follow the root `SECURITY.md` when present.
+User-facing installation instructions target released Aster Mail builds with
+module support; do not ask end users to switch development branches or apply SDK patches.
+
 Before implementing or changing a module, read the current `../AGENTS.md` and
 the relevant Aster Mail implementation and tests in `../desktop/`, `../src/`
 and `../test/`. Follow its applicable protocol, security, coding and testing

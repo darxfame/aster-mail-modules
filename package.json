@@ -1,6 +1,6 @@
 {
   "name": "aster-mail-modules",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -9,5 +9,18 @@
     "test": "node --test test/*.test.cjs",
     "package:ktalk": "node scripts/package-ktalk.cjs",
     "check:catalog": "node scripts/catalog.cjs"
+  },
+  "description": "Official module catalog and development SDK for Aster Mail",
+  "author": "darxfame",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/darxfame/aster-mail-modules.git"
+  },
+  "homepage": "https://github.com/darxfame/aster-mail-modules#readme",
+  "bugs": {
+    "url": "https://github.com/darxfame/aster-mail-modules/issues"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

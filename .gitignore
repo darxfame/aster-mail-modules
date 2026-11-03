@@ -1,0 +1,15 @@
+node_modules/
+release/
+dist/
+coverage/
+.tmp/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+*.enc
+*.key
+*.pem
+*.p12
+*.pfx

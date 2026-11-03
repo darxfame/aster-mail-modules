@@ -46,3 +46,12 @@ fallback versions and application release builds belong to the parent repository
 Tag main-branch pushes with a new annotated version tag and keep this repository's
 release notes in Russian. Do not reuse or move existing tags. The initial
 documentation-only version is `v0.1.0`.
+
+## Approved catalog
+
+`catalog.json` is the explicit author-approved list consumed by Aster Mail.
+An unmerged PR, package folder or branch is not approval. Publish the ready package
+first, then add its exact commit, complete manifest and verified package digest.
+Keep the catalog empty until real packages pass review. The client connects the
+listed version in one click after disclosing its capabilities. Source code and
+service-specific metadata remain here; only generic SDK mechanisms belong in Aster.

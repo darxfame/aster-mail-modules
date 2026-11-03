@@ -12,6 +12,7 @@ async function fixture(network, initial = {}) {
     if (method === 'auth.status') return auth;
     if (method === 'auth.signIn') { auth = { connected: true, origin: input.origin }; return auth; }
     if (method === 'auth.signOut') { auth = { connected: false, origin: null }; return true; }
+    if (method === 'network.requestOrigin') return { granted: new URL(input.origin).hostname.endsWith('.ktalk.ru'), origin: input.origin };
     if (method === 'network.request') { requests.push(input); return network(input, stored); }
     if (method === 'ui.context') return { language: 'en' };
     if (method === 'meeting.getDraft') return api.draft;
@@ -97,11 +98,22 @@ test('custom server packages contain exact reviewed origins and refuse overwriti
   const { build } = require('../scripts/package-ktalk.cjs');
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ktalk-package-')); t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const output = path.join(directory, 'package');
-  await build({ server: 'meet.example.test', output, identityOrigins: ['https://sso.example.test'], version: '0.1.1' });
+  await build({ server: 'meet.example.test', output, identityOrigins: ['https://sso.example.test'], version: '99.0.0' });
   const manifest = JSON.parse(await fs.readFile(path.join(output, 'module.json')));
   assert.deepEqual(manifest.networkOrigins, ['https://meet.example.test']);
   assert.deepEqual(manifest.meetingLinks.origins, manifest.networkOrigins);
   assert.ok(manifest.authentication.identityOrigins.includes('https://sso.example.test'));
-  assert.equal(manifest.version, '0.1.1');
-  await assert.rejects(build({ server: 'meet.example.test', output, version: '0.1.1' }), { code: 'EEXIST' });
+  assert.equal(manifest.version, '99.0.0');
+  await assert.rejects(build({ server: 'meet.example.test', output, version: '99.0.0' }), { code: 'EEXIST' });
+});
+
+test('custom workspace uses an exact SDK origin grant, and cancellation preserves the previous server and key', async () => {
+  const f = await fixture(notFound, configured); const call = f.api.call.bind(f.api); const grants = [];
+  f.api.call = async (method, input) => { if (method === 'network.requestOrigin') { grants.push(input.origin); return { granted: false }; } return call(method, input); };
+  assert.equal((await f.commands.save({ server: 'diy.ktalk.ru', apiKey: 'new-fictional-key' })).error, 'undeclared');
+  assert.deepEqual(f.state(), configured);
+  f.api.call = async (method, input) => { if (method === 'network.requestOrigin') { grants.push(input.origin); return { granted: true, origin: input.origin }; } return call(method, input); };
+  await f.commands.save({ server: 'https://diy.ktalk.ru', apiKey: 'new-fictional-key' });
+  assert.equal(f.state().server, 'https://diy.ktalk.ru'); assert.equal(f.state().apiKey, 'new-fictional-key');
+  assert.deepEqual(grants, ['https://diy.ktalk.ru', 'https://diy.ktalk.ru']);
 });

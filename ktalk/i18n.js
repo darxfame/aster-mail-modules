@@ -37,7 +37,7 @@ const en = {
   'Введите название до 128 символов и подтвердите создание.': 'Enter a title up to 128 characters and confirm creation.',
   'Случайный адрес уже занят. Новая комната не создана.': 'The random address is already taken. No room was created.',
   'Описание слишком длинное или усечено. Добавьте ссылку вручную, сохранив описание.': 'Description too long or truncated. Add the link manually to preserve the description.',
-  'Этот сервер не включён в пакет. Подготовьте пакет для него по инструкции README.': 'This server is not included in the package. Follow the README to prepare a package for it.',
+  'Доступ к серверу не разрешён. Проверьте адрес и подтвердите разрешение в Aster Mail.': 'Access to the server was not granted. Check the address and approve access in Aster Mail.',
   'Не удалось выполнить действие. Проверьте введённые данные и состояние модуля.': 'Action failed. Check the input and module status.',
   'При нажатии «Подключиться» ссылки этих серверов откроются в установленном приложении Толк.': 'Clicking Join opens links from these servers in the installed KTalk app.',
   'Работаем…': 'Working…',

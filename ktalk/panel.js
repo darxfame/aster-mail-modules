@@ -3,7 +3,7 @@ const $ = selector => document.querySelector(selector);
 const bridge = window.asterModule;
 let tr = value => value, state = {}, busy = false;
 const messages = {
-  undeclared: 'Этот сервер не включён в пакет. Подготовьте пакет для него по инструкции README.',
+  undeclared: 'Доступ к серверу не разрешён. Проверьте адрес и подтвердите разрешение в Aster Mail.',
   pending: 'Сначала завершите работу с предыдущей комнатой.',
   key: 'Введите ключ API для выбранного сервера.',
   title: 'Введите название до 128 символов и подтвердите создание.',

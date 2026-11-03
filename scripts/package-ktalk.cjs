@@ -7,7 +7,7 @@ async function build({ server, output, identityOrigins = [], version }) {
   const origin = serverOrigin(server), identities = [...new Set(['https://passport.skbkontur.ru', 'https://identity.kontur.ru', ...identityOrigins.map(serverOrigin)])];
   if (identities.length > 8) throw new Error('At most eight identity origins are allowed');
   const manifest = JSON.parse(await fs.readFile(path.join(root, 'ktalk/module.json'), 'utf8'));
-  if (!/^\d+\.\d+\.\d+$/.test(version) || version === manifest.version) throw new Error('Specify a new package version, for example --version 0.1.1');
+  if (!/^\d+\.\d+\.\d+$/.test(version) || version === manifest.version) throw new Error('Specify a new package version, for example --version 0.1.2');
   manifest.version = version; manifest.networkOrigins = [origin]; manifest.meetingLinks.origins = [origin]; manifest.authentication.origins = [origin]; manifest.authentication.identityOrigins = identities;
   const destination = path.resolve(output);
   // Never overwrite sources or silently replace an existing immutable package.
@@ -24,7 +24,7 @@ if (require.main === module) {
   const args = process.argv.slice(2), options = { identityOrigins: [] };
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index], value = args[index + 1];
-    if (!value || !['--server', '--out', '--identity-origin', '--version'].includes(key)) throw new Error('Usage: --server https://company.ktalk.ru --out dist/company --version 0.1.1 [--identity-origin https://sso.company.ru]');
+    if (!value || !['--server', '--out', '--identity-origin', '--version'].includes(key)) throw new Error('Usage: --server https://company.ktalk.ru --out dist/company --version 0.1.2 [--identity-origin https://sso.company.ru]');
     if (key === '--identity-origin') options.identityOrigins.push(value);
     else options[{ '--server': 'server', '--out': 'output', '--version': 'version' }[key]] = value;
   }

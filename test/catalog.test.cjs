@@ -6,7 +6,7 @@ const C = require('../scripts/catalog.cjs');
 const manifest = require('../ktalk/module.json');
 const files = () => new Map(['module.json', ...manifest.files].map(file => [file, fs.readFileSync(path.join(__dirname, '../ktalk', file))]));
 function entry() {
-  return { id: manifest.id, name: manifest.name, version: manifest.version, source: { repository: 'https://github.com/darxfame/aster-mail-modules', directory: 'ktalk', commit: 'a'.repeat(40) }, sha256: C.fingerprint(files()), permissions: manifest.permissions, networkOrigins: manifest.networkOrigins, networkHeaders: manifest.networkHeaders, meetingLinks: manifest.meetingLinks, authentication: manifest.authentication, host: { apiVersion: 1, features: ['meeting.launch', 'auth.ktalk-session', 'rpc.error-details'] } };
+  return { id: manifest.id, name: manifest.name, version: manifest.version, source: { repository: 'https://github.com/darxfame/aster-mail-modules', directory: 'ktalk', commit: 'a'.repeat(40) }, sha256: C.fingerprint(files()), permissions: manifest.permissions, networkOrigins: manifest.networkOrigins, networkHeaders: manifest.networkHeaders, optionalOrigins: manifest.optionalOrigins, meetingLinks: manifest.meetingLinks, authentication: manifest.authentication, host: { apiVersion: 1, features: ['meeting.launch', 'auth.session', 'rpc.error-details', 'network.origin-grants'] } };
 }
 test('catalog requires immutable commits, SHA-256, unique entries, declared scopes and no unknown fields', () => {
   assert.equal(C.validateCatalog({ schemaVersion: 1, modules: [entry()] }).modules.length, 1);
@@ -21,4 +21,10 @@ test('catalog verification rejects modified resources, permissions, identity ori
   assert.throws(() => C.verifyEntry({ ...entry(), permissions: entry().permissions.filter(item => item !== 'storage') }, files()));
   assert.throws(() => C.verifyEntry({ ...entry(), version: '99.0.0' }, files()));
   assert.throws(() => C.verifyEntry({ ...entry(), authentication: { ...entry().authentication, identityOrigins: ['https://evil.test'] } }, files()));
+});
+
+test('published package uses the common browser-token contract without a provider-specific host adapter', () => {
+  assert.equal(manifest.authentication.type, 'browser-token');
+  assert.deepEqual(manifest.authentication.capture.tokenPath, ['data', 'token']);
+  assert.equal(manifest.authentication.authorization.scheme, 'Session');
 });

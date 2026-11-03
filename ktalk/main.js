@@ -14,16 +14,16 @@ export async function activate(api) {
     settings: async () => settings(await read()),
     login: async () => {
       const state = await read(), server = state.server || servers[0];
-      if (!servers.includes(server)) return { error: 'undeclared' };
+      if (!servers.includes(server) && !(await api.call('network.requestOrigin', { origin: server })).granted) return { error: 'undeclared' };
       if (!state.server) { state.server = server; await save(state); }
       await api.call('auth.signIn', { origin: server }); return settings(state);
     },
     logout: async () => { await api.call('auth.signOut'); return settings(await read()); },
     save: async input => {
       const state = await read(), server = serverOrigin(input.server);
-      if (!servers.includes(server)) return { error: 'undeclared' };
       if (state.pending && state.pending.server !== server) return { error: 'pending' };
       if (typeof input.apiKey !== 'string' || input.apiKey.length > 4096 || /[\r\n]/.test(input.apiKey)) return { error: 'key' };
+      if (!servers.includes(server) && !(await api.call('network.requestOrigin', { origin: server })).granted) return { error: 'undeclared' };
       const apiKey = input.clearKey ? '' : input.apiKey.trim() || (state.server === server ? state.apiKey || '' : '');
       await save({ ...state, server, apiKey });
       return safe({ ...state, server, apiKey });
@@ -32,7 +32,7 @@ export async function activate(api) {
       const state = await read();
       if (state.pending) return { error: 'pending', ...safe(state) };
       const auth = await api.call('auth.status');
-      if (!servers.includes(state.server) || !state.apiKey && (!auth.connected || auth.origin !== state.server)) return { error: 'key' };
+      if (!state.server || !state.apiKey && (!auth.connected || auth.origin !== state.server)) return { error: 'key' };
       const title = typeof input.title === 'string' ? input.title.trim() : '';
       if (!title || title.length > 128 || input.confirm !== true) return { error: 'title' };
       const name = newRoomName(), url = `${state.server}/${name}`;

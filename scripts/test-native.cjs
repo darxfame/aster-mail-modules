@@ -20,7 +20,8 @@ app.whenReady().then(async () => {
   await store.load('fictional-account'); store.requireEncryption();
   // Intercept only the fictional auth window. No login request reaches the Internet.
   const fromPartition = electron.session.fromPartition.bind(electron.session);
-  const fixtureElectron = { ...electron, session: { fromPartition(partition, options) {
+  let originPrompts = 0;
+  const fixtureElectron = { ...electron, dialog: { async showMessageBox(options) { assert.match(options.detail, /https:\/\/diy.ktalk.ru/); originPrompts++; return { response: 1 }; } }, session: { fromPartition(partition, options) {
     const isolated = fromPartition(partition, options);
     if (partition.startsWith('aster-module-auth-')) {
       isolated.protocol.handle('https', request => {
@@ -43,6 +44,9 @@ app.whenReady().then(async () => {
   const bundle = await M.readPackage(path.join(__dirname, '../ktalk'));
   await host.install(bundle); await host.configure(bundle.manifest.id, true);
   const invoke = (command, input) => host.invoke(bundle.manifest.id, command, input);
+  await invoke('save', { server: 'diy.ktalk.ru', apiKey: '' });
+  assert.deepEqual(records[0].originGrants, ['https://diy.ktalk.ru']); assert.equal(originPrompts, 1);
+  assert.ok(host.definition(host.entries.get(bundle.manifest.id)).authentication.origins.includes('https://diy.ktalk.ru'));
   await invoke('save', { server: 'yandex.ktalk.ru', apiKey: '' });
   let result = await invoke('login'); assert.equal(result.auth.pending, true);
   const entry = host.entries.get(bundle.manifest.id), loginWindow = entry.authFlow.window;

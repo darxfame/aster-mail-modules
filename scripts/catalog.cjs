@@ -5,7 +5,7 @@ const { execFileSync } = require('node:child_process');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const permissionNames = ['ui', 'storage', 'network', 'calendar.read', 'meeting.draft', 'events', 'meeting.launch', 'auth.session'];
-const featureNames = ['meeting.launch', 'auth.session', 'rpc.error-details', 'network.origin-grants'];
+const featureNames = ['meeting.launch', 'auth.session', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'];
 function fail() { throw new Error('Invalid catalog or pinned package mismatch'); }
 function keys(value, allowed, required = allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !allowed.includes(key)) || required.some(key => !Object.hasOwn(value, key))) fail();
@@ -78,6 +78,7 @@ function verifyEntry(entry, files, host) {
   if (files.size !== manifest.files.length + 1 || manifest.files.some(file => !files.has(file)) || fingerprint(files) !== entry.sha256) fail();
   for (const key of ['id', 'name', 'version', 'optionalOrigins', 'meetingLinks', 'authentication']) assert.deepEqual(entry[key], manifest[key]);
   if (manifest.apiVersion !== entry.host.apiVersion) fail();
+  if ((manifest.settingsVersion !== undefined || manifest.settingsMigrations !== undefined) && !entry.host.features.includes('settings.migrations')) fail();
   for (const key of ['permissions', 'networkOrigins', 'networkHeaders']) assert.deepEqual([...entry[key]].sort(), [...(manifest[key] || [])].sort());
   return true;
 }

@@ -17,7 +17,7 @@ Manifest: право `meeting.launch` и
 {
   "meetingLinks": {
     "scheme": "ktalk",
-    "origins": ["https://yandex.ktalk.ru"]
+    "origins": ["https://app.ktalk.ru"]
   }
 }
 ```
@@ -47,7 +47,7 @@ Manifest: право `auth.session` вместе с `network` и
       "rejectPath": ["data", "anonymous"]
     },
     "authorization": { "scheme": "Session" },
-    "origins": ["https://yandex.ktalk.ru"],
+    "origins": ["https://app.ktalk.ru"],
     "identityOrigins": ["https://passport.skbkontur.ru", "https://identity.kontur.ru"]
   }
 }
@@ -99,3 +99,6 @@ Host показывает точный адрес и запрашивает по
 Токены прежнего сервера не переносятся, IdP origins не расширяются автоматически.
 Удаление модуля удаляет дополнительные разрешения. Домены вне объявленного
 семейства оформляются проверенным пакетом с точными origins.
+
+Обновления модулей сохраняют данные. Версия настроек и декларативные миграции
+описаны в [updates.md](updates.md); устанавливать обновление через удаление нельзя.

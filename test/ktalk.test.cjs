@@ -23,21 +23,21 @@ async function fixture(network, initial = {}) {
   return { commands, api, requests, writes, state: () => structuredClone(stored), setAuth(value) { auth = value; } };
 }
 const notFound = () => { throw Object.assign(new Error('fictional missing room'), { code: 'http-error', status: 404 }); };
-const configured = { server: 'https://yandex.ktalk.ru', apiKey: 'fictional-secret' };
+const configured = { server: 'https://app.ktalk.ru', apiKey: 'fictional-secret' };
 test('server and room parsing accepts custom HTTPS and test_room but rejects escapes', async () => {
   const { serverOrigin, roomURL } = await import('../ktalk/core.js');
-  assert.equal(serverOrigin('yandex.ktalk.ru'), 'https://yandex.ktalk.ru');
+  assert.equal(serverOrigin('app.ktalk.ru'), 'https://app.ktalk.ru');
   assert.equal(serverOrigin('https://meet.example.test:8443'), 'https://meet.example.test:8443');
-  for (const input of ['http://yandex.ktalk.ru', 'https://x@yandex.ktalk.ru', 'https://yandex.ktalk.ru/path', 'https://yandex.ktalk.ru?x=1', 'https://yandex.ktalk.ru\\@evil.test', 'localhost']) assert.throws(() => serverOrigin(input));
-  const origins = ['https://yandex.ktalk.ru'];
-  assert.equal(roomURL('https://yandex.ktalk.ru/test_room?pin=1234', origins), 'https://yandex.ktalk.ru/test_room?pin=1234');
-  for (const input of ['ktalk://yandex.ktalk.ru/test_room', 'https://evil.test/test_room', 'https://yandex.ktalk.ru/api', 'https://yandex.ktalk.ru/a/b', 'https://yandex.ktalk.ru/%2e%2e/a']) assert.throws(() => roomURL(input, origins));
+  for (const input of ['http://app.ktalk.ru', 'https://x@app.ktalk.ru', 'https://app.ktalk.ru/path', 'https://app.ktalk.ru?x=1', 'https://app.ktalk.ru\\@evil.test', 'localhost']) assert.throws(() => serverOrigin(input));
+  const origins = ['https://app.ktalk.ru'];
+  assert.equal(roomURL('https://app.ktalk.ru/test_room?pin=1234', origins), 'https://app.ktalk.ru/test_room?pin=1234');
+  for (const input of ['ktalk://app.ktalk.ru/test_room', 'https://evil.test/test_room', 'https://app.ktalk.ru/api', 'https://app.ktalk.ru/a/b', 'https://app.ktalk.ru/%2e%2e/a']) assert.throws(() => roomURL(input, origins));
 });
 test('creation uses official upsert contract, persisted intent, scoped key and separate draft action', async () => {
   const f = await fixture((input, state) => {
     if (input.method === 'GET') return notFound();
     assert.equal(state.pending.status, 'unknown');
-    assert.match(input.url, /^https:\/\/yandex.ktalk.ru\/api\/Rooms\/aster[a-f0-9]{32}$/);
+    assert.match(input.url, /^https:\/\/app.ktalk.ru\/api\/Rooms\/aster[a-f0-9]{32}$/);
     assert.deepEqual(input.headers, { 'x-auth-token': configured.apiKey });
     assert.deepEqual(input.body, { title: 'Fictional planning' });
     return { roomName: input.url.split('/').at(-1), title: input.body.title };
@@ -83,14 +83,14 @@ test('corporate sessions use a host handle, never expose tokens and can be clear
 });
 test('keys stay bound to their origin and existing links preserve drafts without contacting service', async () => {
   const f = await fixture(() => { throw new Error('No network expected'); }, configured);
-  const result = await f.commands.save({ server: 'app.ktalk.ru', apiKey: '' });
+  const result = await f.commands.save({ server: 'diy.ktalk.ru', apiKey: '' });
   assert.equal(result.hasKey, false); assert.equal(f.state().apiKey, '');
   assert.equal((await f.commands.save({ server: 'https://evil.test', apiKey: 'do-not-send' })).error, 'undeclared');
   f.api.draft = { body: 'Agenda', truncated: true };
-  assert.equal((await f.commands.insert({ existing: 'https://yandex.ktalk.ru/test_room' }, { editorId: 'one' })).error, 'truncated');
+  assert.equal((await f.commands.insert({ existing: 'https://app.ktalk.ru/test_room' }, { editorId: 'one' })).error, 'truncated');
   assert.equal(f.writes.length, 0);
   f.api.draft = { body: 'Agenda' };
-  await f.commands.insert({ existing: 'https://yandex.ktalk.ru/test_room' }, { editorId: 'one' });
+  await f.commands.insert({ existing: 'https://app.ktalk.ru/test_room' }, { editorId: 'one' });
   assert.match(f.writes[0].input.body, /^Agenda\n\n/); assert.equal(f.requests.length, 0);
   await assert.rejects(f.commands.insert({ existing: 'https://evil.test/test_room' }, {}));
 });

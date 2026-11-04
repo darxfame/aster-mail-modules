@@ -11,6 +11,7 @@ const M = require(path.join(hostRoot, 'desktop/modules.cjs'));
 const { ModuleHost } = require(path.join(hostRoot, 'desktop/module-host.cjs'));
 const profile = require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'aster-ktalk-native-'));
 app.setName('KTalk module test'); app.setPath('userData', profile);
+app.on('window-all-closed', () => {});
 let host, owner;
 app.whenReady().then(async () => {
   let records = [], sessionId = 'fictional-session', puts = 0, patch = null, theme = 'light';
@@ -25,7 +26,7 @@ app.whenReady().then(async () => {
     const isolated = fromPartition(partition, options);
     if (partition.startsWith('aster-module-auth-')) {
       isolated.protocol.handle('https', request => {
-        if (new URL(request.url).origin !== 'https://yandex.ktalk.ru') return new Response('Fictional identity provider', { headers: { 'Content-Type': 'text/html' } });
+        if (new URL(request.url).origin !== 'https://app.ktalk.ru') return new Response('Fictional identity provider', { headers: { 'Content-Type': 'text/html' } });
         return new Response('<!doctype html><title>Fictional corporate sign-in</title><button id="login">Sign in with fictional credentials</button><script>document.querySelector("button").onclick=()=>localStorage.setItem("session",JSON.stringify({data:{token:"fictional-private-session",expiresAt:"2099-01-01T00:00:00Z",anonymous:false}}))</script>', { headers: { 'Content-Type': 'text/html' } });
       });
     }
@@ -47,9 +48,9 @@ app.whenReady().then(async () => {
   await invoke('save', { server: 'diy.ktalk.ru', apiKey: '' });
   assert.deepEqual(records[0].originGrants, ['https://diy.ktalk.ru']); assert.equal(originPrompts, 1);
   assert.ok(host.definition(host.entries.get(bundle.manifest.id)).authentication.origins.includes('https://diy.ktalk.ru'));
-  await invoke('save', { server: 'yandex.ktalk.ru', apiKey: '' });
+  await invoke('save', { server: 'app.ktalk.ru', apiKey: '' });
   let result = await invoke('login'); assert.equal(result.auth.pending, true);
-  const entry = host.entries.get(bundle.manifest.id), loginWindow = entry.authFlow.window;
+  let entry = host.entries.get(bundle.manifest.id); const loginWindow = entry.authFlow.window;
   assert.equal(loginWindow.webContents.getLastWebPreferences().sandbox, true);
   assert.equal(loginWindow.webContents.getLastWebPreferences().nodeIntegration, false);
   assert.notEqual(loginWindow.webContents.session, electron.session.defaultSession);
@@ -77,7 +78,23 @@ app.whenReady().then(async () => {
   assert.equal(result.pending?.status, 'created', JSON.stringify(result)); assert.equal(puts, 1);
   assert.equal((await invoke('create', { title: 'Must not repeat', confirm: true })).error, 'pending');
   await host.invoke(bundle.manifest.id, 'insert', {}, { editorId: 'fictional-editor', draft: { body: 'Agenda must survive' } });
-  assert.match(patch.body, /^Agenda must survive\n\n/); assert.match(patch.location, /^https:\/\/yandex.ktalk.ru\/aster/);
+  assert.match(patch.body, /^Agenda must survive\n\n/); assert.match(patch.location, /^https:\/\/app.ktalk.ru\/aster/);
+  await host.update(records => { records[0].data.fixtureMigrationSource = 'kept'; });
+  const beforeUpdate = structuredClone(records[0]);
+  const nextFiles = new Map(bundle.files), nextManifest = JSON.parse(nextFiles.get('module.json'));
+  nextManifest.version = '0.1.3'; nextManifest.settingsVersion = 2;
+  nextManifest.settingsMigrations = [{ from: 1, to: 2, operations: [{ op: 'rename', from: ['fixtureMigrationSource'], path: ['fixtureMigrationTarget'] }] }];
+  nextFiles.set('module.json', Buffer.from(JSON.stringify(nextManifest)));
+  await host.install(M.fromFiles(nextFiles));
+  assert.equal(records[0].data.fixtureMigrationTarget, 'kept');
+  const persistedUpgrade = await new LocalStore(path.join(profile, 'fictional-account'), electron.safeStorage).load('fictional-account');
+  assert.equal(persistedUpgrade.modules[0].data.fixtureMigrationTarget, 'kept');
+  assert.equal(persistedUpgrade.modules[0].settingsVersion, 2);
+  assert.deepEqual(records[0].data.pending, beforeUpdate.data.pending);
+  assert.equal(records[0].auth.token, beforeUpdate.auth.token);
+  assert.deepEqual(records[0].originGrants, beforeUpdate.originGrants);
+  assert.equal((await invoke('create', { title: 'Must not repeat after update', confirm: true })).error, 'pending'); assert.equal(puts, 1);
+  entry = host.entries.get(bundle.manifest.id);
   M.requestJSON = originalRequest;
   owner = new BrowserWindow({ width: 800, height: 760, show: false, webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
   await owner.loadURL('data:text/html,<title>KTalk fictional UI fixture</title>');
@@ -89,7 +106,7 @@ app.whenReady().then(async () => {
     const view = [...host.views.values()][0].view;
     await new Promise(resolve => setTimeout(resolve, 250));
     const ui = await view.webContents.executeJavaScript('({ ready: document.querySelector("#server").value, overflow: document.documentElement.scrollWidth > window.innerWidth, password: document.querySelector("#api-key").value })');
-    assert.equal(ui.ready, 'https://yandex.ktalk.ru'); assert.equal(ui.overflow, false); assert.equal(ui.password, '');
+    assert.equal(ui.ready, 'https://app.ktalk.ru'); assert.equal(ui.overflow, false); assert.equal(ui.password, '');
     const png = await view.webContents.capturePage(); await fs.writeFile(path.join(screenshots, `ktalk-light-${Math.round(scale * 100)}.png`), png.toPNG());
   }
   const view = [...host.views.values()][0].view;
@@ -104,6 +121,6 @@ app.whenReady().then(async () => {
   sessionId = 'other-account'; host.closeAll(); assert.equal(entry.authFlow, null);
   const handler = app.getApplicationNameForProtocol('ktalk://aster-module-test.invalid/test_room');
   console.log(`KTalk protocol handler: ${handler || 'not installed'}`);
-  console.log('PASS: actual sandbox runtime, corporate login window, isolated session capture, encrypted-store handoff, no token in catalog, single create, preserved draft, 100/150/200% layouts, logout and account retirement');
+  console.log('PASS: actual sandbox runtime, corporate login window, isolated session capture, encrypted-store handoff, no token in catalog, single create, preserved draft, update and persisted settings migration, 100/150/200% layouts, logout and account retirement');
   owner.destroy(); host.closeAll(); await store.clear(); app.exit(0);
 }).catch(error => { console.error(error); host?.closeAll(); if (owner && !owner.isDestroyed()) owner.destroy(); app.exit(1); });

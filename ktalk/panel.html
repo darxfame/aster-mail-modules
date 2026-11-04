@@ -13,12 +13,15 @@
     <form id="settings">
       <label><span data-text>Сервер пространства</span><input id="server" name="server" list="servers" placeholder="company.ktalk.ru" required autocapitalize="none" spellcheck="false"></label>
       <datalist id="servers"></datalist>
-      <p class="note" data-text>Ключ API не обязателен: можно войти через корпоративный аккаунт кнопкой ниже.</p>
+      <p class="note" data-text>Для корпоративного SSO укажите адрес пространства компании, например company.ktalk.ru. Вход выполняется в это пространство Толка.</p>
+      <p class="note" data-text>Ключ API не обязателен: можно войти через SSO пространства кнопкой ниже.</p>
       <label><span data-text>Ключ API пространства</span><input id="api-key" name="apiKey" type="password" maxlength="4096" autocomplete="off" spellcheck="false"></label>
       <p id="key-hint" class="note"></p>
       <p class="note" data-text>Ключ создаёт администратор Толка: «Управление» → «API ключи» → «Добавить». Попросите права на чтение и изменение комнат. Для входа по готовой ссылке ключ не нужен.</p>
       <div class="actions"><button type="submit" data-text>Сохранить настройки</button><button id="clear-key" type="button" class="quiet" data-text>Удалить ключ</button></div>
-      <div class="actions"><button id="login" type="button" data-text>Войти через корпоративный аккаунт</button><button id="logout" type="button" class="quiet" data-text>Удалить сессию Толка</button></div>
+      <div class="actions"><button id="login" type="button" data-text>Войти через SSO пространства</button><button id="logout" type="button" class="quiet" data-text>Удалить сессию Толка</button></div>
+      <p class="note" data-text>Удаление сессии завершает вход. Чтобы также очистить сервер, API-ключ и настройки комнат, используйте полный сброс.</p>
+      <button id="reset" type="button" class="quiet" data-text>Сбросить все настройки Толка</button>
     </form>
     </details>
     <p id="auth-state" class="note" role="status"></p>

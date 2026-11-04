@@ -74,7 +74,7 @@ test('GET failures and existing rooms never become a PUT; verification is read-o
   await f.commands.acknowledge({ confirm: true }); assert.equal(f.state().pending, undefined);
 });
 test('corporate sessions use a host handle, never expose tokens and can be cleared', async () => {
-  const f = await fixture(input => { if (input.method === 'GET') return notFound(); assert.equal(input.auth, 'session'); assert.equal(input.headers, undefined); return { roomName: input.url.split('/').at(-1), title: input.body.title }; }, { server: configured.server });
+  const f = await fixture(input => { if (input.method === 'GET') return notFound(); assert.equal(input.auth, 'session'); assert.equal(input.headers, undefined); return { roomName: input.url.split('/').at(-1), title: input.body.title }; }, { server: 'https://diy.ktalk.ru' });
   assert.equal((await f.commands.create({ title: 'Fictional', confirm: true })).error, 'key');
   await f.commands.login();
   assert.equal((await f.commands.settings()).auth.connected, true);
@@ -103,6 +103,7 @@ test('custom server packages contain exact reviewed origins and refuse overwriti
   assert.deepEqual(manifest.networkOrigins, ['https://meet.example.test']);
   assert.deepEqual(manifest.meetingLinks.origins, manifest.networkOrigins);
   assert.ok(manifest.authentication.identityOrigins.includes('https://sso.example.test'));
+  assert.ok(manifest.authentication.identityOrigins.includes('https://auth.kontur.ru'));
   assert.equal(manifest.version, '99.0.0');
   await assert.rejects(build({ server: 'meet.example.test', output, version: '99.0.0' }), { code: 'EEXIST' });
 });
@@ -170,4 +171,27 @@ test('calendar contributions contain one creation button and no settings panels 
   const manifest = JSON.parse(await fs.readFile(path.join(__dirname, '../ktalk/module.json')));
   assert.deepEqual(manifest.commands.filter(command => command.slot !== 'internal').map(command => [command.id, command.slot]), [['create-meeting-room', 'meeting.create']]);
   assert.deepEqual(manifest.views.map(view => view.slot), ['panel']);
+  assert.ok(manifest.authentication.identityOrigins.includes('https://auth.kontur.ru'));
+});
+
+test('full reset clears server, key and session only after confirmation and preserves uncertain room intent', async () => {
+  const f = await fixture(() => assert.fail('Reset must not contact the service'), configured);
+  f.setAuth({ connected: true, origin: configured.server });
+  assert.equal((await f.commands.reset({})).error, 'confirm'); assert.deepEqual(f.state(), configured);
+  const cleared = await f.commands.reset({ confirm: true });
+  assert.deepEqual(f.state(), {}); assert.equal(cleared.server, ''); assert.equal(cleared.hasKey, false); assert.equal(cleared.auth.connected, false);
+  assert.equal((await f.commands.login()).error, 'server');
+  assert.equal((await f.commands.create({ title: 'Fictional', confirm: true })).error, 'key');
+  const pending = { ...configured, pending: { status: 'unknown', url: 'https://app.ktalk.ru/fictional' } };
+  const uncertain = await fixture(() => assert.fail('No uncertain write replay'), pending);
+  assert.equal((await uncertain.commands.reset({ confirm: true })).error, 'pending'); assert.deepEqual(uncertain.state(), pending);
+  await uncertain.commands.acknowledge({ confirm: true }); await uncertain.commands.reset({ confirm: true }); assert.deepEqual(uncertain.state(), {});
+});
+
+
+test('workspace SSO requires the company space and never starts general Contour account sign-in', async () => {
+  const f = await fixture(() => assert.fail('No service request'), { server: 'https://app.ktalk.ru' });
+  assert.equal((await f.commands.login()).error, 'workspace'); assert.equal((await f.commands.settings()).auth.connected, false);
+  await f.commands.save({ server: 'company.ktalk.ru', apiKey: '' });
+  await f.commands.login(); assert.equal((await f.commands.settings()).auth.origin, 'https://company.ktalk.ru');
 });

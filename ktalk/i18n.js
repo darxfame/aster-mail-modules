@@ -1,4 +1,17 @@
 const en = {
+  'Для корпоративного SSO укажите адрес пространства компании, например company.ktalk.ru.': 'For corporate SSO, enter your company workspace address, such as company.ktalk.ru.',
+  'Для корпоративного SSO укажите адрес пространства компании, например company.ktalk.ru. Вход выполняется в это пространство Толка.': 'For corporate SSO, enter your company workspace address, such as company.ktalk.ru. Sign-in uses that KTalk workspace.',
+  'Войти через SSO пространства': 'Sign in with workspace SSO',
+  'Ключ API не обязателен: можно войти через SSO пространства кнопкой ниже.': 'An API key is optional: use workspace SSO below instead.',
+
+  'Сначала укажите сервер пространства Толка.': 'Enter your KTalk workspace server first.',
+  'Подтвердите полный сброс настроек.': 'Confirm resetting all settings.',
+  'Удаление сессии завершает вход. Чтобы также очистить сервер, API-ключ и настройки комнат, используйте полный сброс.': 'Removing the session signs you out. To also clear the server, API key and room settings, use the full reset.',
+  'Сбросить все настройки Толка': 'Reset all KTalk settings',
+  'Подтвердить полный сброс': 'Confirm full reset',
+  'Будут удалены сервер, API-ключ, сессия и настройки комнат. Комнаты на сервере сохранятся.': 'This clears the server, API key, session and room settings. Rooms on the server are kept.',
+  'Настройки Толка очищены.': 'KTalk settings cleared.',
+
   'Настройки Толка': 'KTalk settings',
   'Вход в сервис и создание комнат из календаря': 'Service sign-in and room creation from the calendar',
   'Ключ API не обязателен: можно войти через корпоративный аккаунт кнопкой ниже.': 'An API key is optional: use the corporate sign-in button below instead.',
@@ -18,7 +31,7 @@ const en = {
   'Вход выполнен. Сессия хранится защищённо в Aster Mail.': 'Signed in. Session stored securely by Aster Mail.',
   'Завершите вход в отдельном окне Толка.': 'Complete sign-in in the separate KTalk window.',
   'Для создания комнат войдите в Толк или укажите ключ API.': 'Sign in to KTalk or enter an API key to create rooms.',
-  'Для корпоративного входа требуется разрешить сервер в пакете:': 'Corporate sign-in needs this origin declared in the package:',
+  'Этот сервер входа не поддержан версией модуля. Обновите модуль или сообщите его разработчику:': 'This module version does not support the sign-in server. Update the module or contact its developer:',
   'Комнаты Толка': 'KTalk rooms',
   'Встреча в один клик': 'One click to join',
   'Сервер пространства': 'Workspace server',

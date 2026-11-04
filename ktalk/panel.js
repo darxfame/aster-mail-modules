@@ -3,6 +3,9 @@ const $ = selector => document.querySelector(selector);
 const bridge = window.asterModule;
 let tr = value => value, state = {}, busy = false;
 const messages = {
+  workspace: 'Для корпоративного SSO укажите адрес пространства компании, например company.ktalk.ru.',
+  server: 'Сначала укажите сервер пространства Толка.',
+  confirm: 'Подтвердите полный сброс настроек.',
   undeclared: 'Доступ к серверу не разрешён. Проверьте адрес и подтвердите разрешение в Aster Mail.',
   pending: 'Сначала завершите работу с предыдущей комнатой.',
   key: 'Введите ключ API для выбранного сервера.',
@@ -16,8 +19,10 @@ const messages = {
 };
 function render() {
   const auth = state.auth || {};
-  $('#auth-state').textContent = auth.blockedOrigin ? `${tr('Для корпоративного входа требуется разрешить сервер в пакете:')} ${auth.blockedOrigin}` : tr(auth.pending ? 'Завершите вход в отдельном окне Толка.' : auth.connected && auth.origin === state.server ? 'Вход выполнен. Сессия хранится защищённо в Aster Mail.' : 'Для создания комнат войдите в Толк или укажите ключ API.');
+  $('#auth-state').textContent = auth.blockedOrigin ? `${tr('Этот сервер входа не поддержан версией модуля. Обновите модуль или сообщите его разработчику:')} ${auth.blockedOrigin}` : tr(auth.pending ? 'Завершите вход в отдельном окне Толка.' : auth.connected && auth.origin === state.server ? 'Вход выполнен. Сессия хранится защищённо в Aster Mail.' : 'Для создания комнат войдите в Толк или укажите ключ API.');
   $('#key-hint').textContent = tr(state.hasKey ? 'Ключ сохранён. Оставьте поле пустым, чтобы сохранить его.' : 'Ключ нужен только для создания комнат.');
+  $('#clear-key').disabled = !state.hasKey;
+  $('#logout').disabled = !auth.connected && !auth.pending;
   $('#pending').hidden = !state.pending;
   if (state.pending) {
     $('#room-url').value = state.pending.url;
@@ -32,7 +37,7 @@ async function run(command, input, success) {
   $('#status').classList.remove('error'); $('#status').textContent = tr('Работаем…');
   try {
     const value = await bridge.command(command, input);
-    if (value?.server) state = { ...state, ...value };
+    if (typeof value?.server === 'string') state = { ...state, ...value };
     $('#status').textContent = tr(value?.error ? messages[value.error] || messages.unknown : success || '');
     $('#status').classList.toggle('error', Boolean(value?.error));
     return value;
@@ -53,10 +58,20 @@ $('#clear-key').addEventListener('click', async () => {
 });
 $('#check').addEventListener('click', () => run('check'));
 $('#login').addEventListener('click', async () => {
+  if (!$('#settings').reportValidity()) return;
   const value = await run('save', { server: $('#server').value, apiKey: $('#api-key').value }); $('#api-key').value = '';
   if (value && !value.error) await run('login');
 });
 $('#logout').addEventListener('click', () => run('logout'));
+$('#reset').addEventListener('click', async () => {
+  if ($('#reset').dataset.confirmed !== 'true') {
+    $('#reset').dataset.confirmed = 'true'; $('#reset').textContent = tr('Подтвердить полный сброс');
+    $('#status').textContent = tr('Будут удалены сервер, API-ключ, сессия и настройки комнат. Комнаты на сервере сохранятся.'); return;
+  }
+  const value = await run('reset', { confirm: true }, 'Настройки Толка очищены.');
+  if (value && !value.error) { $('#server').value = ''; $('#api-key').value = ''; $('#ack').checked = false; }
+  delete $('#reset').dataset.confirmed; $('#reset').textContent = tr('Сбросить все настройки Толка');
+});
 $('#acknowledge').addEventListener('click', async () => { await run('acknowledge', { confirm: $('#ack').checked }); $('#ack').checked = false; });
 try {
   const ui = await bridge.call('ui.context');
@@ -65,7 +80,7 @@ try {
   for (const element of document.querySelectorAll('[data-text]')) element.textContent = tr(element.textContent);
   state = await bridge.command('settings');
   $('#server').value = state.server;
-  for (const server of state.servers) { const option = document.createElement('option'); option.value = server; $('#servers').append(option); }
+  for (const server of state.servers.filter(value => value !== 'https://app.ktalk.ru')) { const option = document.createElement('option'); option.value = server; $('#servers').append(option); }
   render();
 } catch { $('#status').textContent = tr('Не удалось выполнить действие. Проверьте введённые данные и состояние модуля.'); }
 setInterval(async () => {

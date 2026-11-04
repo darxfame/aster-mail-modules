@@ -22,12 +22,17 @@ app.whenReady().then(async () => {
   // Intercept only the fictional auth window. No login request reaches the Internet.
   const fromPartition = electron.session.fromPartition.bind(electron.session);
   let originPrompts = 0;
+  const loginOrigins = new Set();
   const fixtureElectron = { ...electron, dialog: { async showMessageBox(options) { assert.match(options.detail, /https:\/\/diy.ktalk.ru/); originPrompts++; return { response: 1 }; } }, session: { fromPartition(partition, options) {
     const isolated = fromPartition(partition, options);
     if (partition.startsWith('aster-module-auth-')) {
       isolated.protocol.handle('https', request => {
-        if (new URL(request.url).origin !== 'https://app.ktalk.ru') return new Response('Fictional identity provider', { headers: { 'Content-Type': 'text/html' } });
-        return new Response('<!doctype html><title>Fictional corporate sign-in</title><button id="login">Sign in with fictional credentials</button><script>document.querySelector("button").onclick=()=>localStorage.setItem("session",JSON.stringify({data:{token:"fictional-private-session",expiresAt:"2099-01-01T00:00:00Z",anonymous:false}}))</script>', { headers: { 'Content-Type': 'text/html' } });
+        const url = new URL(request.url); loginOrigins.add(url.origin);
+        if (url.origin === 'https://identity.kontur.ru') return Response.redirect('https://auth.kontur.ru/fictional-login', 302);
+        if (url.origin === 'https://auth.kontur.ru') return new Response('<script>location.replace("https://diy.ktalk.ru/fictional-callback")</script>', { headers: { 'Content-Type': 'text/html' } });
+        if (url.origin !== 'https://diy.ktalk.ru') throw new Error('No other providers allowed in fixture');
+        const body = url.pathname === '/fictional-callback' ? '<script>localStorage.setItem("session",JSON.stringify({data:{token:"fictional-private-session",expiresAt:"2099-01-01T00:00:00Z",anonymous:false}}))</script>' : '<button id="login">Sign in with fictional credentials</button><script>document.querySelector("button").onclick=()=>location.href="https://identity.kontur.ru/fictional-authorize"</script>';
+        return new Response('<!doctype html><title>Fictional corporate sign-in</title>' + body, { headers: { 'Content-Type': 'text/html' } });
       });
     }
     return isolated;
@@ -48,7 +53,7 @@ app.whenReady().then(async () => {
   await invoke('save', { server: 'diy.ktalk.ru', apiKey: '' });
   assert.deepEqual(records[0].originGrants, ['https://diy.ktalk.ru']); assert.equal(originPrompts, 1);
   assert.ok(host.definition(host.entries.get(bundle.manifest.id)).authentication.origins.includes('https://diy.ktalk.ru'));
-  await invoke('save', { server: 'app.ktalk.ru', apiKey: '' });
+  await invoke('save', { server: 'diy.ktalk.ru', apiKey: '' });
   let result = await invoke('login'); assert.equal(result.auth.pending, true);
   let entry = host.entries.get(bundle.manifest.id); const loginWindow = entry.authFlow.window;
   assert.equal(loginWindow.webContents.getLastWebPreferences().sandbox, true);
@@ -59,6 +64,7 @@ app.whenReady().then(async () => {
   const until = Date.now() + 7000;
   while (!records[0].auth && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(records[0].auth?.token, 'fictional-private-session');
+  assert.ok(loginOrigins.has('https://identity.kontur.ru')); assert.ok(loginOrigins.has('https://auth.kontur.ru'));
   const encrypted = await fs.readFile(path.join(profile, 'fictional-account/local-data.enc'));
   assert.equal(encrypted.includes(Buffer.from('fictional-private-session')), false);
   const restored = new LocalStore(path.join(profile, 'fictional-account'), electron.safeStorage);
@@ -78,7 +84,7 @@ app.whenReady().then(async () => {
   assert.equal(result.pending?.status, 'created', JSON.stringify(result)); assert.equal(puts, 1);
   assert.equal((await invoke('create', { title: 'Must not repeat', confirm: true })).error, 'pending');
   await host.invoke(bundle.manifest.id, 'insert', {}, { editorId: 'fictional-editor', draft: { body: 'Agenda must survive' } });
-  assert.match(patch.body, /^Agenda must survive\n\n/); assert.match(patch.location, /^https:\/\/app.ktalk.ru\/aster/);
+  assert.match(patch.body, /^Agenda must survive\n\n/); assert.match(patch.location, /^https:\/\/diy.ktalk.ru\/aster/);
   await host.update(records => { records[0].data.fixtureMigrationSource = 'kept'; });
   const beforeUpdate = structuredClone(records[0]);
   const nextFiles = new Map(bundle.files), nextManifest = JSON.parse(nextFiles.get('module.json'));
@@ -98,7 +104,7 @@ app.whenReady().then(async () => {
   const editor = { editorId: 'fictional-calendar-editor', draft: { title: 'Fictional meeting', body: 'Agenda must survive' } };
   result = await host.invoke(bundle.manifest.id, 'create-meeting-room', {}, editor);
   assert.equal(result.error, undefined); assert.equal(puts, 1);
-  assert.match(patch.location, /^https:\/\/app.ktalk.ru\/aster/);
+  assert.match(patch.location, /^https:\/\/diy.ktalk.ru\/aster/);
   await host.invoke(bundle.manifest.id, 'create-meeting-room', {}, editor); assert.equal(puts, 1);
   await host.invoke(bundle.manifest.id, 'create-meeting-room', {}, { ...editor, editorId: 'another-calendar-editor' }); assert.equal(puts, 2);
   M.requestJSON = originalRequest;
@@ -112,7 +118,7 @@ app.whenReady().then(async () => {
     const view = [...host.views.values()][0].view;
     await new Promise(resolve => setTimeout(resolve, 250));
     const ui = await view.webContents.executeJavaScript('({ ready: document.querySelector("#server").value, overflow: document.documentElement.scrollWidth > window.innerWidth, password: document.querySelector("#api-key").value })');
-    assert.equal(ui.ready, 'https://app.ktalk.ru'); assert.equal(ui.overflow, false); assert.equal(ui.password, '');
+    assert.equal(ui.ready, 'https://diy.ktalk.ru'); assert.equal(ui.overflow, false); assert.equal(ui.password, '');
     const png = await view.webContents.capturePage(); await fs.writeFile(path.join(screenshots, `ktalk-light-${Math.round(scale * 100)}.png`), png.toPNG());
   }
   const view = [...host.views.values()][0].view;
@@ -124,6 +130,15 @@ app.whenReady().then(async () => {
   await fs.writeFile(path.join(screenshots, 'ktalk-dark-200-bottom.png'), (await view.webContents.capturePage()).toPNG());
   assert.equal((await invoke('settings')).pending.status, 'created');
   await invoke('logout'); assert.equal(records[0].auth, undefined);
+  await view.webContents.executeJavaScript('document.querySelector("#reset").click()');
+  assert.notDeepEqual(records[0].data, {});
+  await view.webContents.executeJavaScript('document.querySelector("#reset").click()');
+  const resetDeadline = Date.now() + 5000;
+  while (Object.keys(records[0].data).length && Date.now() < resetDeadline) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.deepEqual(records[0].data, {}); assert.equal((await invoke('settings')).server, '');
+  await new Promise(resolve => setTimeout(resolve, 150));
+  assert.equal(await view.webContents.executeJavaScript('document.querySelector("#server").value'), '');
+  await invoke('save', { server: 'diy.ktalk.ru', apiKey: '' });
   await invoke('login'); assert.ok(entry.authFlow);
   sessionId = 'other-account'; host.closeAll(); assert.equal(entry.authFlow, null);
   const handler = app.getApplicationNameForProtocol('ktalk://aster-module-test.invalid/test_room');

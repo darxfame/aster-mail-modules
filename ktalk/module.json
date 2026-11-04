@@ -1,7 +1,7 @@
 {
   "apiVersion": 1,
   "id": "ru.ktalk.meetings",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "integration",
   "name": "Контур.Толк · KTalk",
   "main": "main.js",
@@ -26,7 +26,8 @@
     ],
     "identityOrigins": [
       "https://passport.skbkontur.ru",
-      "https://identity.kontur.ru"
+      "https://identity.kontur.ru",
+      "https://auth.kontur.ru"
     ],
     "capture": {
       "storage": "localStorage",
@@ -73,6 +74,11 @@
     {
       "id": "logout",
       "title": "Clear corporate sign-in",
+      "slot": "internal"
+    },
+    {
+      "id": "reset",
+      "title": "Reset settings",
       "slot": "internal"
     },
     {

@@ -5,7 +5,7 @@ import { serverOrigin, roomURL, newRoomName, draftPatch } from './core.js';
 export async function activate(api) {
   const read = async () => (await api.call('storage.get')) || {};
   const save = value => api.call('storage.set', value);
-  const safe = state => ({ server: state.server || servers[0], servers, hasKey: Boolean(state.apiKey), pending: state.pending || null });
+  const safe = state => ({ server: state.server || '', servers, hasKey: Boolean(state.apiKey), pending: state.pending || null });
   const settings = async state => ({ ...safe(state), auth: await api.call('auth.status') });
   const request = (state, name, method = 'GET', body) => api.call('network.request', {
     url: `${state.server}/api/Rooms/${name}`, method, ...(body ? { body } : {}), ...(state.apiKey ? { headers: { 'x-auth-token': state.apiKey } } : { auth: 'session' })
@@ -40,12 +40,19 @@ export async function activate(api) {
   return { commands: {
     settings: async () => settings(await read()),
     login: async () => {
-      const state = await read(), server = state.server || servers[0];
+      const state = await read(), server = state.server;
+      if (!server) return { error: 'server' };
+      if (server === 'https://app.ktalk.ru') return { error: 'workspace' };
       if (!servers.includes(server) && !(await api.call('network.requestOrigin', { origin: server })).granted) return { error: 'undeclared' };
-      if (!state.server) { state.server = server; await save(state); }
       await api.call('auth.signIn', { origin: server }); return settings(state);
     },
     logout: async () => { await api.call('auth.signOut'); return settings(await read()); },
+    reset: async input => {
+      const state = await read();
+      if (input.confirm !== true) return { error: 'confirm' };
+      if (state.pending && state.pending.status !== 'created') return { error: 'pending', ...safe(state) };
+      await api.call('auth.signOut'); await save({}); return settings({});
+    },
     save: async input => {
       const state = await read(), server = serverOrigin(input.server);
       if (state.pending && state.pending.server !== server) return { error: 'pending' };

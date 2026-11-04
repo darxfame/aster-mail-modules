@@ -4,7 +4,7 @@ const { pathToFileURL } = require('node:url');
 async function build({ server, output, identityOrigins = [], version }) {
   const root = path.resolve(__dirname, '..');
   const { serverOrigin } = await import(pathToFileURL(path.join(root, 'ktalk/core.js')).href);
-  const origin = serverOrigin(server), identities = [...new Set(['https://passport.skbkontur.ru', 'https://identity.kontur.ru', ...identityOrigins.map(serverOrigin)])];
+  const origin = serverOrigin(server), identities = [...new Set(['https://passport.skbkontur.ru', 'https://identity.kontur.ru', 'https://auth.kontur.ru', ...identityOrigins.map(serverOrigin)])];
   if (identities.length > 8) throw new Error('At most eight identity origins are allowed');
   const manifest = JSON.parse(await fs.readFile(path.join(root, 'ktalk/module.json'), 'utf8'));
   if (!/^\d+\.\d+\.\d+$/.test(version) || version === manifest.version) throw new Error('Specify a new package version, for example --version 0.1.2');

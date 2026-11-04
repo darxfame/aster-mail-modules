@@ -117,3 +117,57 @@ test('custom workspace uses an exact SDK origin grant, and cancellation preserve
   assert.equal(f.state().server, 'https://diy.ktalk.ru'); assert.equal(f.state().apiKey, 'new-fictional-key');
   assert.deepEqual(grants, ['https://diy.ktalk.ru', 'https://diy.ktalk.ru']);
 });
+
+test('one calendar button creates a room and inserts its link, with no duplicate PUT for the same editor', async () => {
+  let puts = 0;
+  const f = await fixture(input => {
+    if (input.method === 'GET') return notFound();
+    puts++; return { roomName: input.url.split('/').at(-1), title: input.body.title };
+  }, configured);
+  f.api.draft = { title: 'Fictional team meeting', body: 'Keep this agenda', location: '' };
+  const result = await f.commands['create-meeting-room']({}, { editorId: 'draft-one' });
+  assert.equal(result.error, undefined); assert.equal(puts, 1);
+  assert.equal(f.writes.length, 1); assert.equal(f.writes[0].input.location, result.url);
+  assert.match(f.writes[0].input.body, /^Keep this agenda\n\nJoin KTalk: https:/);
+  await f.commands['create-meeting-room']({}, { editorId: 'draft-one' }); assert.equal(puts, 1);
+  f.api.draft = { title: 'Another meeting', body: '', location: 'Fictional office' };
+  await f.commands['create-meeting-room']({}, { editorId: 'draft-two' }); assert.equal(puts, 2);
+  assert.equal(f.writes.at(-1).input.location, 'Fictional office');
+  assert.match(f.writes.at(-1).input.body, /Join KTalk: https:/);
+});
+
+test('calendar creation does not write without a new editor, valid draft or configured authentication', async () => {
+  const f = await fixture(() => assert.fail('No service requests'), configured);
+  assert.ok((await f.commands['create-meeting-room']({}, {})).error);
+  f.api.draft = { body: 'Fictional', truncated: true };
+  assert.ok((await f.commands['create-meeting-room']({}, { editorId: 'draft' })).error);
+  const unauthenticated = await fixture(() => assert.fail('No unauthenticated request'), { server: configured.server });
+  unauthenticated.api.draft = { title: 'Fictional', body: '' };
+  assert.match((await unauthenticated.commands['create-meeting-room']({}, { editorId: 'draft' })).message, /sign-in/);
+});
+
+test('calendar creation never retries an uncertain write or a successful room after a failed draft delivery', async () => {
+  for (const uncertain of [false, true]) {
+    let puts = 0;
+    const f = await fixture(input => {
+      if (input.method === 'GET') return notFound();
+      puts++; if (uncertain) throw { code: 'network-unknown' };
+      return { roomName: input.url.split('/').at(-1), title: input.body.title };
+    }, configured);
+    f.api.draft = { title: 'Fictional', body: '' };
+    if (uncertain) assert.ok((await f.commands['create-meeting-room']({}, { editorId: 'draft' })).error);
+    else {
+      const call = f.api.call;
+      f.api.call = async (method, input) => { if (method === 'meeting.patchDraft') throw new Error('Retired editor'); return call(method, input); };
+      await assert.rejects(f.commands['create-meeting-room']({}, { editorId: 'draft' }), /Retired/);
+      f.api.call = call;
+    }
+    await f.commands['create-meeting-room']({}, { editorId: 'draft' }); assert.equal(puts, 1);
+  }
+});
+
+test('calendar contributions contain one creation button and no settings panels or toolbar menus', async () => {
+  const manifest = JSON.parse(await fs.readFile(path.join(__dirname, '../ktalk/module.json')));
+  assert.deepEqual(manifest.commands.filter(command => command.slot !== 'internal').map(command => [command.id, command.slot]), [['create-meeting-room', 'meeting.create']]);
+  assert.deepEqual(manifest.views.map(view => view.slot), ['panel']);
+});

@@ -8,39 +8,27 @@
 </head>
 <body>
   <main>
-    <header><span class="mark" aria-hidden="true">Т</span><div><h1 data-text>Комнаты Толка</h1><p data-text>Встреча в один клик</p></div></header>
+    <header><span class="mark" aria-hidden="true">Т</span><div><h1 data-text>Настройки Толка</h1><p data-text>Вход в сервис и создание комнат из календаря</p></div></header>
     <details id="connection" open><summary data-text>Настройки подключения</summary>
     <form id="settings">
       <label><span data-text>Сервер пространства</span><input id="server" name="server" list="servers" placeholder="company.ktalk.ru" required autocapitalize="none" spellcheck="false"></label>
       <datalist id="servers"></datalist>
+      <p class="note" data-text>Ключ API не обязателен: можно войти через корпоративный аккаунт кнопкой ниже.</p>
       <label><span data-text>Ключ API пространства</span><input id="api-key" name="apiKey" type="password" maxlength="4096" autocomplete="off" spellcheck="false"></label>
       <p id="key-hint" class="note"></p>
-      <p class="note" data-text>Права ключа: чтение и изменение комнат. Хранится защищённо в Aster Mail.</p>
+      <p class="note" data-text>Ключ создаёт администратор Толка: «Управление» → «API ключи» → «Добавить». Попросите права на чтение и изменение комнат. Для входа по готовой ссылке ключ не нужен.</p>
       <div class="actions"><button type="submit" data-text>Сохранить настройки</button><button id="clear-key" type="button" class="quiet" data-text>Удалить ключ</button></div>
       <div class="actions"><button id="login" type="button" data-text>Войти через корпоративный аккаунт</button><button id="logout" type="button" class="quiet" data-text>Удалить сессию Толка</button></div>
     </form>
     </details>
     <p id="auth-state" class="note" role="status"></p>
-    <section>
-      <h2 data-text>Новая комната</h2>
-      <form id="create">
-        <label><span data-text>Название комнаты</span><input name="title" id="title" maxlength="128" required></label>
-        <p class="note" data-text>Будет создана отдельная комната на выбранном сервере. Приглашение отправляется отдельно в Aster Mail.</p>
-        <label class="check"><input id="confirm" name="confirm" type="checkbox" required><span data-text>Подтверждаю создание комнаты</span></label>
-        <button type="submit" class="primary" data-text>Создать комнату</button>
-      </form>
-    </section>
     <section id="pending" hidden>
       <h2 data-text>Результат создания</h2>
       <p id="room-state" class="note"></p>
       <label><span data-text>Готовая ссылка</span><input id="room-url" readonly></label>
-      <div class="actions"><button id="insert" type="button" class="primary" data-text>Добавить ссылку во встречу</button><button id="check" type="button" data-text>Проверить комнату</button></div>
+      <div class="actions"><button id="check" type="button" data-text>Проверить комнату</button></div>
       <label class="check"><input id="ack" type="checkbox"><span data-text>Проверил результат в Толке; разрешаю начать другую комнату.</span></label>
       <button id="acknowledge" type="button" class="quiet" data-text>Завершить работу с этой комнатой</button>
-    </section>
-    <section>
-      <h2 data-text>Готовая ссылка</h2>
-      <form id="existing"><label><span data-text>Готовая ссылка</span><input id="existing-url" name="url" type="url" placeholder="https://company.ktalk.ru/test_room" required spellcheck="false"></label><button type="submit" data-text>Добавить ссылку во встречу</button></form>
     </section>
     <p class="note" data-text>При нажатии «Подключиться» ссылки этих серверов откроются в установленном приложении Толк.</p>
     <output id="status" role="status" aria-live="polite"></output>

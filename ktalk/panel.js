@@ -19,11 +19,9 @@ function render() {
   $('#auth-state').textContent = auth.blockedOrigin ? `${tr('Для корпоративного входа требуется разрешить сервер в пакете:')} ${auth.blockedOrigin}` : tr(auth.pending ? 'Завершите вход в отдельном окне Толка.' : auth.connected && auth.origin === state.server ? 'Вход выполнен. Сессия хранится защищённо в Aster Mail.' : 'Для создания комнат войдите в Толк или укажите ключ API.');
   $('#key-hint').textContent = tr(state.hasKey ? 'Ключ сохранён. Оставьте поле пустым, чтобы сохранить его.' : 'Ключ нужен только для создания комнат.');
   $('#pending').hidden = !state.pending;
-  $('#create').querySelector('button').disabled = busy || Boolean(state.pending);
   if (state.pending) {
     $('#room-url').value = state.pending.url;
-    $('#room-state').textContent = tr(state.pending.status === 'created' ? 'Комната создана. Можно добавить ссылку во встречу.' : messages[state.pending.status] || messages.unknown);
-    $('#insert').disabled = busy || state.pending.status !== 'created';
+    $('#room-state').textContent = tr(state.pending.status === 'created' ? 'Комната создана. Ссылку можно скопировать.' : messages[state.pending.status] || messages.unknown);
   }
 }
 async function run(command, input, success) {
@@ -53,18 +51,12 @@ $('#settings').addEventListener('submit', async event => {
 $('#clear-key').addEventListener('click', async () => {
   await run('save', { server: state.server, apiKey: '', clearKey: true }, 'Настройки сохранены.'); $('#api-key').value = '';
 });
-$('#create').addEventListener('submit', async event => {
-  event.preventDefault();
-  await run('create', { title: $('#title').value, confirm: $('#confirm').checked }); $('#confirm').checked = false;
-});
 $('#check').addEventListener('click', () => run('check'));
 $('#login').addEventListener('click', async () => {
   const value = await run('save', { server: $('#server').value, apiKey: $('#api-key').value }); $('#api-key').value = '';
   if (value && !value.error) await run('login');
 });
 $('#logout').addEventListener('click', () => run('logout'));
-$('#insert').addEventListener('click', () => run('insert', {}, 'Предложено добавить ссылку. Проверьте форму встречи перед отправкой.'));
-$('#existing').addEventListener('submit', event => { event.preventDefault(); void run('insert', { existing: $('#existing-url').value }, 'Предложено добавить ссылку. Проверьте форму встречи перед отправкой.'); });
 $('#acknowledge').addEventListener('click', async () => { await run('acknowledge', { confirm: $('#ack').checked }); $('#ack').checked = false; });
 try {
   const ui = await bridge.call('ui.context');
@@ -72,7 +64,6 @@ try {
   if (['dark', 'light'].includes(ui.theme)) document.body.dataset.theme = ui.theme;
   for (const element of document.querySelectorAll('[data-text]')) element.textContent = tr(element.textContent);
   state = await bridge.command('settings');
-  if (state.hasKey || state.auth?.connected) $('#connection').open = false;
   $('#server').value = state.server;
   for (const server of state.servers) { const option = document.createElement('option'); option.value = server; $('#servers').append(option); }
   render();

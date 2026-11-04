@@ -1,4 +1,5 @@
 import { servers } from './config.js';
+import { translator } from './i18n.js';
 import { serverOrigin, roomURL, newRoomName, draftPatch } from './core.js';
 
 export async function activate(api) {
@@ -9,8 +10,34 @@ export async function activate(api) {
   const request = (state, name, method = 'GET', body) => api.call('network.request', {
     url: `${state.server}/api/Rooms/${name}`, method, ...(body ? { body } : {}), ...(state.apiKey ? { headers: { 'x-auth-token': state.apiKey } } : { auth: 'session' })
   });
+  const createRoom = async input => {
+    const state = await read();
+    if (state.pending) return { error: 'pending', ...safe(state) };
+    const auth = await api.call('auth.status');
+    if (!state.server || !state.apiKey && (!auth.connected || auth.origin !== state.server)) return { error: 'key' };
+    const title = typeof input.title === 'string' ? input.title.trim() : '';
+    if (!title || title.length > 128 || input.confirm !== true) return { error: 'title' };
+    const name = newRoomName(), url = `${state.server}/${name}`;
+    // The official PUT is an upsert. Never intentionally change an existing room.
+    try { await request(state, name); return { error: 'collision' }; }
+    catch (error) { if (error.code !== 'http-error' || error.status !== 404) return { error: 'read', status: error.status || null }; }
+    state.pending = { server: state.server, name, url, title, status: 'unknown', ...(input.editorId ? { editorId: input.editorId } : {}) };
+    // Persist intent BEFORE writing. A crash or account retirement cannot enable replay.
+    await save(state);
+    let room;
+    try { room = await request(state, name, 'PUT', { title }); }
+    catch (error) {
+      const rejected = error.code === 'http-error' && [400, 401, 403, 404, 409, 422, 429].includes(error.status);
+      state.pending.status = rejected ? 'rejected' : 'unknown';
+      await save(state);
+      return { ...safe(state), error: rejected ? 'rejected' : 'unknown', status: error.status || null };
+    }
+    if (!room || room.roomName !== name || room.title !== title) return { ...safe(state), error: 'unknown' };
+    state.pending.status = 'created';
+    await save(state);
+    return safe(state);
+  };
   return { commands: {
-    open: () => api.call('ui.openView', { view: 'panel' }),
     settings: async () => settings(await read()),
     login: async () => {
       const state = await read(), server = state.server || servers[0];
@@ -28,36 +55,34 @@ export async function activate(api) {
       await save({ ...state, server, apiKey });
       return safe({ ...state, server, apiKey });
     },
-    create: async input => {
+    create: createRoom,
+    'create-meeting-room': async (_input, context) => {
+      const tr = translator((await api.call('ui.context')).language);
+      const fail = message => ({ message: tr(message), error: true });
+      if (!context?.editorId) return fail('Откройте новую встречу, чтобы создать комнату.');
+      const draft = await api.call('meeting.getDraft');
+      if (draft.truncated || (draft.body || '').length > 7600) return fail('Описание слишком длинное. Добавьте ссылку вручную в настройках модуля.');
       const state = await read();
-      if (state.pending) return { error: 'pending', ...safe(state) };
-      const auth = await api.call('auth.status');
-      if (!state.server || !state.apiKey && (!auth.connected || auth.origin !== state.server)) return { error: 'key' };
-      const title = typeof input.title === 'string' ? input.title.trim() : '';
-      if (!title || title.length > 128 || input.confirm !== true) return { error: 'title' };
-      const name = newRoomName(), url = `${state.server}/${name}`;
-      // The official PUT is an upsert. Never intentionally change an existing room.
-      try { await request(state, name); return { error: 'collision' }; }
-      catch (error) { if (error.code !== 'http-error' || error.status !== 404) return { error: 'read', status: error.status || null }; }
-      state.pending = { server: state.server, name, url, title, status: 'unknown' };
-      // Persist intent BEFORE writing. A crash or account retirement cannot enable replay.
-      await save(state);
-      let room;
-      try { room = await request(state, name, 'PUT', { title }); }
-      catch (error) {
-        const rejected = error.code === 'http-error' && [400, 401, 403, 404, 409, 422, 429].includes(error.status);
-        state.pending.status = rejected ? 'rejected' : 'unknown';
-        await save(state);
-        return { ...safe(state), error: rejected ? 'rejected' : 'unknown', status: error.status || null };
+      if (state.pending && state.pending.status !== 'created') return fail('Результат предыдущего создания не подтверждён. Проверьте комнату в настройках модуля.');
+      let result;
+      if (state.pending && (!state.pending.editorId || state.pending.editorId === context.editorId)) result = safe(state);
+      else {
+        if (state.pending) { delete state.pending; await save(state); }
+        result = await createRoom({ title: ((draft.title || '').trim() || tr('Новая встреча')).slice(0, 128), confirm: true, editorId: context.editorId });
       }
-      if (!room || room.roomName !== name || room.title !== title) return { ...safe(state), error: 'unknown' };
-      state.pending.status = 'created';
-      await save(state);
-      return safe(state);
+      if (result.error) return fail(result.error === 'key' ? 'Сначала настройте вход в Толк в разделе «Модули».' : 'Не удалось подтвердить создание комнаты. Проверьте результат в настройках модуля.');
+      // The host rejects stale editors and asks before replacing newer field values.
+      let patch;
+      try { patch = draftPatch(draft, result.pending.url, tr('Подключиться в Толке')); }
+      catch { return fail('Описание слишком длинное. Добавьте ссылку вручную в настройках модуля.'); }
+      await api.call('meeting.patchDraft', patch);
+      const current = await read();
+      current.pending.editorId = context.editorId; await save(current);
+      return { message: tr('Ссылка на комнату добавлена в новую встречу.'), url: result.pending.url };
     },
     check: async () => {
       const state = await read(), pending = state.pending;
-      if (!pending || pending.server !== state.server || !servers.includes(state.server) || !/^aster[a-f0-9]{32}$/.test(pending.name)) return { error: 'key' };
+      if (!pending || pending.server !== state.server || !state.server || !/^aster[a-f0-9]{32}$/.test(pending.name)) return { error: 'key' };
       try {
         const room = await request(state, pending.name);
         if (room?.roomName !== pending.name || room.title !== pending.title) return { ...safe(state), error: 'unknown' };
@@ -66,7 +91,7 @@ export async function activate(api) {
     },
     insert: async (input, context) => {
       const state = await read();
-      const url = input.existing ? roomURL(input.existing, servers) : state.pending?.status === 'created' ? roomURL(state.pending.url, servers) : null;
+      const url = input.existing ? roomURL(input.existing, [...new Set([...servers, state.server].filter(Boolean))]) : state.pending?.status === 'created' ? roomURL(state.pending.url, [...new Set([...servers, state.server].filter(Boolean))]) : null;
       if (!url) return { error: 'unknown' };
       const draft = context?.editorId ? await api.call('meeting.getDraft') : {};
       const ui = await api.call('ui.context');

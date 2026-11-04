@@ -82,7 +82,7 @@ app.whenReady().then(async () => {
   await host.update(records => { records[0].data.fixtureMigrationSource = 'kept'; });
   const beforeUpdate = structuredClone(records[0]);
   const nextFiles = new Map(bundle.files), nextManifest = JSON.parse(nextFiles.get('module.json'));
-  nextManifest.version = '0.1.3'; nextManifest.settingsVersion = 2;
+  nextManifest.version = bundle.manifest.version.split('.').map((part, index) => index === 2 ? String(Number(part) + 1) : part).join('.'); nextManifest.settingsVersion = 2;
   nextManifest.settingsMigrations = [{ from: 1, to: 2, operations: [{ op: 'rename', from: ['fixtureMigrationSource'], path: ['fixtureMigrationTarget'] }] }];
   nextFiles.set('module.json', Buffer.from(JSON.stringify(nextManifest)));
   await host.install(M.fromFiles(nextFiles));
@@ -95,6 +95,12 @@ app.whenReady().then(async () => {
   assert.deepEqual(records[0].originGrants, beforeUpdate.originGrants);
   assert.equal((await invoke('create', { title: 'Must not repeat after update', confirm: true })).error, 'pending'); assert.equal(puts, 1);
   entry = host.entries.get(bundle.manifest.id);
+  const editor = { editorId: 'fictional-calendar-editor', draft: { title: 'Fictional meeting', body: 'Agenda must survive' } };
+  result = await host.invoke(bundle.manifest.id, 'create-meeting-room', {}, editor);
+  assert.equal(result.error, undefined); assert.equal(puts, 1);
+  assert.match(patch.location, /^https:\/\/app.ktalk.ru\/aster/);
+  await host.invoke(bundle.manifest.id, 'create-meeting-room', {}, editor); assert.equal(puts, 1);
+  await host.invoke(bundle.manifest.id, 'create-meeting-room', {}, { ...editor, editorId: 'another-calendar-editor' }); assert.equal(puts, 2);
   M.requestJSON = originalRequest;
   owner = new BrowserWindow({ width: 800, height: 760, show: false, webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
   await owner.loadURL('data:text/html,<title>KTalk fictional UI fixture</title>');
@@ -112,8 +118,9 @@ app.whenReady().then(async () => {
   const view = [...host.views.values()][0].view;
   await view.webContents.executeJavaScript('document.body.dataset.theme="dark"');
   await fs.writeFile(path.join(screenshots, 'ktalk-dark-200.png'), (await view.webContents.capturePage()).toPNG());
-  await view.webContents.executeJavaScript('document.querySelector("#existing-url").focus(); document.querySelector("#existing-url").scrollIntoView({block:"center"})');
-  assert.equal(await view.webContents.executeJavaScript('document.activeElement.id'), 'existing-url');
+  await view.webContents.executeJavaScript('document.querySelector("#api-key").focus(); document.querySelector("#api-key").scrollIntoView({block:"center"})');
+  assert.equal(await view.webContents.executeJavaScript('document.activeElement.id'), 'api-key');
+  assert.equal(await view.webContents.executeJavaScript('Boolean(document.querySelector("#create"))'), false);
   await fs.writeFile(path.join(screenshots, 'ktalk-dark-200-bottom.png'), (await view.webContents.capturePage()).toPNG());
   assert.equal((await invoke('settings')).pending.status, 'created');
   await invoke('logout'); assert.equal(records[0].auth, undefined);

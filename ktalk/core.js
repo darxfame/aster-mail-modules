@@ -24,5 +24,5 @@ export function draftPatch(draft, url, label) {
   const body = draft?.body || '';
   const updated = body.includes(url) ? body : `${body}${body ? '\n\n' : ''}${label}: ${url}`;
   if (updated.length > 8000) throw new Error('truncated');
-  return { location: url, body: updated };
+  return { location: draft?.location || url, body: updated };
 }

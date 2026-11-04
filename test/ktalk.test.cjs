@@ -171,6 +171,7 @@ test('calendar contributions contain one creation button and no settings panels 
   const manifest = JSON.parse(await fs.readFile(path.join(__dirname, '../ktalk/module.json')));
   assert.deepEqual(manifest.commands.filter(command => command.slot !== 'internal').map(command => [command.id, command.slot]), [['create-meeting-room', 'meeting.create']]);
   assert.deepEqual(manifest.views.map(view => view.slot), ['panel']);
+  assert.equal(manifest.authentication.startOrigin, 'https://app.ktalk.ru');
   assert.ok(manifest.authentication.identityOrigins.includes('https://auth.kontur.ru'));
 });
 

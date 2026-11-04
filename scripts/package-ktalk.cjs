@@ -8,7 +8,7 @@ async function build({ server, output, identityOrigins = [], version }) {
   if (identities.length > 8) throw new Error('At most eight identity origins are allowed');
   const manifest = JSON.parse(await fs.readFile(path.join(root, 'ktalk/module.json'), 'utf8'));
   if (!/^\d+\.\d+\.\d+$/.test(version) || version === manifest.version) throw new Error('Specify a new package version, for example --version 0.1.2');
-  manifest.version = version; manifest.networkOrigins = [origin]; manifest.meetingLinks.origins = [origin]; manifest.authentication.origins = [origin]; manifest.authentication.identityOrigins = identities;
+  manifest.version = version; manifest.networkOrigins = [origin]; manifest.meetingLinks.origins = [origin]; manifest.authentication.origins = [origin]; manifest.authentication.startOrigin = origin; manifest.authentication.identityOrigins = identities;
   const destination = path.resolve(output);
   // Never overwrite sources or silently replace an existing immutable package.
   if (destination === root || root.startsWith(`${destination}${path.sep}`) || destination === path.join(root, 'ktalk') || destination.startsWith(`${path.join(root, 'ktalk')}${path.sep}`)) throw new Error('Choose a separate output folder');

@@ -33,7 +33,7 @@
 Это вымышленный пример, не запись для установки. Для пакетов с расширениями
 добавляются точные декларации `meetingLinks` и `authentication`. Поле `host.features`
 задаёт требуемые возможности клиента: `meeting.launch`, `auth.session`,
-`rpc.error-details`, `network.origin-grants`. Клиент должен отказать при отсутствии или неизвестном значении
+`rpc.error-details`, `network.origin-grants`, `auth.start-origin`. Клиент должен отказать при отсутствии или неизвестном значении
 требования; API version `1` сам по себе не подтверждает наличие расширений.
 
 `npm run check:catalog` проверяет запись по локально доступному pinned Git commit;
@@ -95,3 +95,7 @@ SHA-256 — не хеш архива GitHub, не хеш одного module.jso
 доступ к точному HTTPS origin; не выдаёт доступ всему семейству автоматически.
 Тип `authentication.type` для нового пакета — `browser-token` с явными capture
 и authorization из manifest; провайдерный адаптер в host не требуется.
+
+Пакет с `authentication.startOrigin` требует `auth.start-origin`: начальный адрес
+должен быть объявлен среди origins входа, а сессия захватывается только на точном
+origin пространства, переданном модулем в `auth.signIn`.

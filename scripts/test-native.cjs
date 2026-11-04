@@ -28,6 +28,7 @@ app.whenReady().then(async () => {
     if (partition.startsWith('aster-module-auth-')) {
       isolated.protocol.handle('https', request => {
         const url = new URL(request.url); loginOrigins.add(url.origin);
+        if (url.origin === 'https://app.ktalk.ru') return new Response('<!doctype html><title>Fictional KTalk SSO selection</title><button id="login">Workspace SSO</button><script>document.querySelector("button").onclick=()=>location.href="https://identity.kontur.ru/fictional-authorize"</script>', { headers: { 'Content-Type': 'text/html' } });
         if (url.origin === 'https://identity.kontur.ru') return Response.redirect('https://auth.kontur.ru/fictional-login', 302);
         if (url.origin === 'https://auth.kontur.ru') return new Response('<script>location.replace("https://diy.ktalk.ru/fictional-callback")</script>', { headers: { 'Content-Type': 'text/html' } });
         if (url.origin !== 'https://diy.ktalk.ru') throw new Error('No other providers allowed in fixture');
@@ -56,6 +57,7 @@ app.whenReady().then(async () => {
   await invoke('save', { server: 'diy.ktalk.ru', apiKey: '' });
   let result = await invoke('login'); assert.equal(result.auth.pending, true);
   let entry = host.entries.get(bundle.manifest.id); const loginWindow = entry.authFlow.window;
+  assert.equal(new URL(loginWindow.webContents.getURL()).origin, 'https://app.ktalk.ru');
   assert.equal(loginWindow.webContents.getLastWebPreferences().sandbox, true);
   assert.equal(loginWindow.webContents.getLastWebPreferences().nodeIntegration, false);
   assert.notEqual(loginWindow.webContents.session, electron.session.defaultSession);
@@ -64,6 +66,7 @@ app.whenReady().then(async () => {
   const until = Date.now() + 7000;
   while (!records[0].auth && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(records[0].auth?.token, 'fictional-private-session');
+  assert.equal(records[0].auth?.origin, 'https://diy.ktalk.ru');
   assert.ok(loginOrigins.has('https://identity.kontur.ru')); assert.ok(loginOrigins.has('https://auth.kontur.ru'));
   const encrypted = await fs.readFile(path.join(profile, 'fictional-account/local-data.enc'));
   assert.equal(encrypted.includes(Buffer.from('fictional-private-session')), false);

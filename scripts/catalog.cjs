@@ -5,7 +5,7 @@ const { execFileSync } = require('node:child_process');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const permissionNames = ['ui', 'storage', 'network', 'calendar.read', 'meeting.draft', 'events', 'meeting.launch', 'auth.session'];
-const featureNames = ['meeting.launch', 'auth.session', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'];
+const featureNames = ['meeting.launch', 'auth.session', 'auth.start-origin', 'rpc.error-details', 'network.origin-grants', 'settings.migrations'];
 function fail() { throw new Error('Invalid catalog or pinned package mismatch'); }
 function keys(value, allowed, required = allowed) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !allowed.includes(key)) || required.some(key => !Object.hasOwn(value, key))) fail();
@@ -40,10 +40,11 @@ function validateCatalog(catalog) {
       list(entry.meetingLinks.origins, 8, origin); if (!entry.meetingLinks.origins.length) fail();
     } else if (entry.permissions.includes('meeting.launch')) fail();
     if (entry.authentication !== undefined) {
-      keys(entry.authentication, ['type', 'origins', 'identityOrigins', 'capture', 'authorization']);
+      keys(entry.authentication, ['type', 'origins', 'identityOrigins', 'capture', 'authorization', 'startOrigin'], ['type', 'origins', 'identityOrigins', 'capture', 'authorization']);
       if (entry.authentication.type !== 'browser-token' || !entry.permissions.includes('auth.session') || !entry.host.features.includes('auth.session') || !entry.permissions.includes('network')) fail();
       list(entry.authentication.origins, 8, item => origin(item) && entry.networkOrigins.includes(item)); list(entry.authentication.identityOrigins, 8, origin);
       if (!entry.authentication.origins.length) fail();
+      if (entry.authentication.startOrigin !== undefined && (!origin(entry.authentication.startOrigin) || ![...entry.authentication.origins, ...entry.authentication.identityOrigins].includes(entry.authentication.startOrigin) || !entry.host.features.includes('auth.start-origin'))) fail();
       const capture = entry.authentication.capture;
       keys(capture, ['storage', 'key', 'tokenPath', 'expiresAtPath', 'rejectPath'], ['storage', 'key', 'tokenPath', 'expiresAtPath']);
       if (!['localStorage', 'sessionStorage'].includes(capture.storage) || typeof capture.key !== 'string' || !capture.key || capture.key.length > 80) fail();

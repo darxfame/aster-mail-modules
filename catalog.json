@@ -4,13 +4,13 @@
     {
       "id": "ru.ktalk.meetings",
       "name": "Контур.Толк · KTalk",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "source": {
         "repository": "https://github.com/darxfame/aster-mail-modules",
-        "commit": "e3cf8c6a1245c22113ed1b53e4368e8e2fee7c68",
+        "commit": "7782a12f88b428b8b771c3fed0ab927b44c33bc8",
         "directory": "ktalk"
       },
-      "sha256": "c9de01d1983bf64a72989dd69160d7420899474fbea0d7cc284351f723aefb20",
+      "sha256": "d6e1219809ce9b55e5d9cb14a70059116f86b560a049028fe0c4a9fb6bad39fb",
       "permissions": [
         "ui",
         "storage",
@@ -20,8 +20,7 @@
         "auth.session"
       ],
       "networkOrigins": [
-        "https://app.ktalk.ru",
-        "https://yandex.ktalk.ru"
+        "https://app.ktalk.ru"
       ],
       "networkHeaders": [
         "x-auth-token"
@@ -35,15 +34,13 @@
       "meetingLinks": {
         "scheme": "ktalk",
         "origins": [
-          "https://app.ktalk.ru",
-          "https://yandex.ktalk.ru"
+          "https://app.ktalk.ru"
         ]
       },
       "authentication": {
         "type": "browser-token",
         "origins": [
-          "https://app.ktalk.ru",
-          "https://yandex.ktalk.ru"
+          "https://app.ktalk.ru"
         ],
         "identityOrigins": [
           "https://passport.skbkontur.ru",
@@ -75,7 +72,8 @@
           "meeting.launch",
           "auth.session",
           "rpc.error-details",
-          "network.origin-grants"
+          "network.origin-grants",
+          "settings.migrations"
         ]
       }
     }

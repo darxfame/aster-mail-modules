@@ -4,13 +4,13 @@
     {
       "id": "ru.ktalk.meetings",
       "name": "Контур.Толк · KTalk",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "source": {
         "repository": "https://github.com/darxfame/aster-mail-modules",
-        "commit": "69f3ac3cfb78d82e189609b75f60d789287d1925",
+        "commit": "40a910eec72a45e50dc68d2c63f44bab94acd731",
         "directory": "ktalk"
       },
-      "sha256": "4a3174c41ab48b7b72fafa62acfef90ad0c92a2bc711abbbecbfde340eca3ead",
+      "sha256": "f9a225d269b922a24e1fedf719faa0cae91839b218dde81841ab49e4aaa892ac",
       "permissions": [
         "ui",
         "storage",
@@ -66,7 +66,8 @@
         "authorization": {
           "scheme": "Session"
         },
-        "startOrigin": "https://app.ktalk.ru"
+        "startOrigin": "https://app.ktalk.ru",
+        "identityRedirects": true
       },
       "host": {
         "apiVersion": 1,
@@ -76,7 +77,8 @@
           "rpc.error-details",
           "network.origin-grants",
           "settings.migrations",
-          "auth.start-origin"
+          "auth.start-origin",
+          "auth.identity-redirects"
         ]
       }
     }

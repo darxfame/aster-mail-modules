@@ -1,7 +1,7 @@
 {
   "apiVersion": 1,
   "id": "ru.ktalk.meetings",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "integration",
   "name": "Контур.Толк · KTalk",
   "main": "main.js",
@@ -48,7 +48,8 @@
     "authorization": {
       "scheme": "Session"
     },
-    "startOrigin": "https://app.ktalk.ru"
+    "startOrigin": "https://app.ktalk.ru",
+    "identityRedirects": true
   },
   "meetingLinks": {
     "scheme": "ktalk",

@@ -30,7 +30,8 @@ app.whenReady().then(async () => {
         const url = new URL(request.url); loginOrigins.add(url.origin);
         if (url.origin === 'https://app.ktalk.ru') return new Response('<!doctype html><title>Fictional KTalk SSO selection</title><button id="login">Workspace SSO</button><script>document.querySelector("button").onclick=()=>location.href="https://identity.kontur.ru/fictional-authorize"</script>', { headers: { 'Content-Type': 'text/html' } });
         if (url.origin === 'https://identity.kontur.ru') return Response.redirect('https://auth.kontur.ru/fictional-login', 302);
-        if (url.origin === 'https://auth.kontur.ru') return new Response('<script>location.replace("https://diy.ktalk.ru/fictional-callback")</script>', { headers: { 'Content-Type': 'text/html' } });
+        if (url.origin === 'https://auth.kontur.ru') return Response.redirect('https://company-idp.example.test/sso', 302);
+        if (url.origin === 'https://company-idp.example.test') return new Response('<script>localStorage.setItem("session",JSON.stringify({data:{token:"must-not-capture-corporate-token",expiresAt:"2099-01-01T00:00:00Z",anonymous:false}}));location.replace("https://diy.ktalk.ru/fictional-callback")</script>', { headers: { 'Content-Type': 'text/html' } });
         if (url.origin !== 'https://diy.ktalk.ru') throw new Error('No other providers allowed in fixture');
         const body = url.pathname === '/fictional-callback' ? '<script>localStorage.setItem("session",JSON.stringify({data:{token:"fictional-private-session",expiresAt:"2099-01-01T00:00:00Z",anonymous:false}}))</script>' : '<button id="login">Sign in with fictional credentials</button><script>document.querySelector("button").onclick=()=>location.href="https://identity.kontur.ru/fictional-authorize"</script>';
         return new Response('<!doctype html><title>Fictional corporate sign-in</title>' + body, { headers: { 'Content-Type': 'text/html' } });
@@ -67,6 +68,8 @@ app.whenReady().then(async () => {
   while (!records[0].auth && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(records[0].auth?.token, 'fictional-private-session');
   assert.equal(records[0].auth?.origin, 'https://diy.ktalk.ru');
+  assert.ok(loginOrigins.has('https://company-idp.example.test'));
+  assert.ok(!bundle.manifest.authentication.identityOrigins.includes('https://company-idp.example.test'));
   assert.ok(loginOrigins.has('https://identity.kontur.ru')); assert.ok(loginOrigins.has('https://auth.kontur.ru'));
   const encrypted = await fs.readFile(path.join(profile, 'fictional-account/local-data.enc'));
   assert.equal(encrypted.includes(Buffer.from('fictional-private-session')), false);

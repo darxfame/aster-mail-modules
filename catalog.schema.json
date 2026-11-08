@@ -41,6 +41,7 @@
           "properties": {
             "type": { "const": "browser-token" }, "origins": { "$ref": "#/$defs/origins" }, "identityOrigins": { "$ref": "#/$defs/origins" },
             "startOrigin": { "type": "string", "format": "uri", "pattern": "^https://" },
+            "identityRedirects": { "type": "boolean" },
             "capture": {
               "type": "object", "additionalProperties": false, "required": ["storage", "key", "tokenPath", "expiresAtPath"],
               "properties": {
@@ -57,7 +58,7 @@
           "type": "object", "additionalProperties": false, "required": ["apiVersion", "features"],
           "properties": {
             "apiVersion": { "const": 1 },
-            "features": { "type": "array", "uniqueItems": true, "maxItems": 8, "items": { "enum": ["meeting.launch", "auth.session", "auth.start-origin", "rpc.error-details", "network.origin-grants", "settings.migrations"] } }
+            "features": { "type": "array", "uniqueItems": true, "maxItems": 8, "items": { "enum": ["meeting.launch", "auth.session", "auth.start-origin", "auth.identity-redirects", "rpc.error-details", "network.origin-grants", "settings.migrations"] } }
           }
         }
       }

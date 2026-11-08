@@ -99,3 +99,7 @@ SHA-256 — не хеш архива GitHub, не хеш одного module.jso
 Пакет с `authentication.startOrigin` требует `auth.start-origin`: начальный адрес
 должен быть объявлен среди origins входа, а сессия захватывается только на точном
 origin пространства, переданном модулем в `auth.signIn`.
+
+Для `authentication.identityRedirects` требуется `auth.identity-redirects`. Это
+возможность браузерного входа через корпоративный IdP; она не расширяет
+`networkOrigins` и не меняет origin захвата сессии.

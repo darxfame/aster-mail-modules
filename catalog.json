@@ -4,13 +4,13 @@
     {
       "id": "ru.ktalk.meetings",
       "name": "Контур.Толк · KTalk",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "source": {
         "repository": "https://github.com/darxfame/aster-mail-modules",
-        "commit": "97fee41412082ef7e2641311c175a4b1abe6bd57",
+        "commit": "9cfa5d929b32f49e94fab58b7f4773062fa64d49",
         "directory": "ktalk"
       },
-      "sha256": "808754b26bfc0ea9c7b842cff00497be4356155b5774ba54472f221002b08999",
+      "sha256": "8f38fd2fcf43dd94f35951e1fc464ab5bc1814575b396bdaee4d548aa075c5c2",
       "permissions": [
         "ui",
         "storage",

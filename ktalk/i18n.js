@@ -22,6 +22,10 @@ const en = {
   'Участников онлайн': 'Users online',
   'Сессионных залов': 'Session halls',
   'PIN, SIP или трансляция': 'PIN, SIP or stream',
+  'PIN задан': 'PIN present',
+  'SIP-реквизиты доступны (не признак занятой комнаты)': 'SIP dialing details available (not evidence of an occupied room)',
+  'Трансляция включена': 'Streaming enabled',
+  'Трансляция активна': 'Streaming active',
   'Да': 'Yes',
   'Нет': 'No',
   'Проверка адреса комнаты не выполнена. Запрос создания не отправлялся.': 'The room address check failed. No creation request was sent.',
@@ -128,6 +132,7 @@ export function inspectionText(result, tr) {
     rejected: 'Запрос отклонён.', confirmed: 'Проверка подтвердила адрес и название комнаты.', failed: 'Проверка не выполнена.'
   };
   const http = result?.http === '2xx' || Number.isInteger(result?.http) && result.http >= 400 && result.http <= 599 ? `HTTP ${result.http}. ` : '';
-  const summary = ['default', 'configured'].includes(result?.kind) ? ` ${tr('Название задано')}: ${tr(result.hasTitle ? 'Да' : 'Нет')}; ${tr('Описание задано')}: ${tr(result.hasDescription ? 'Да' : 'Нет')}; ${tr('Модераторов')}: ${result.moderators}; ${tr('Участников онлайн')}: ${result.users}; ${tr('Сессионных залов')}: ${result.halls}; ${tr('PIN, SIP или трансляция')}: ${tr(result.protected ? 'Да' : 'Нет')}.` : '';
+  const flags = typeof result?.hasPin === 'boolean' ? [['hasPin', 'PIN задан'], ['sipAvailable', 'SIP-реквизиты доступны (не признак занятой комнаты)'], ['streamEnabled', 'Трансляция включена'], ['streamActive', 'Трансляция активна']].map(([key, label]) => `${tr(label)}: ${tr(result[key] ? 'Да' : 'Нет')}`).join('; ') : `${tr('PIN, SIP или трансляция')}: ${tr(result?.protected ? 'Да' : 'Нет')}`;
+  const summary = ['default', 'configured'].includes(result?.kind) ? ` ${tr('Название задано')}: ${tr(result.hasTitle ? 'Да' : 'Нет')}; ${tr('Описание задано')}: ${tr(result.hasDescription ? 'Да' : 'Нет')}; ${tr('Модераторов')}: ${result.moderators}; ${tr('Участников онлайн')}: ${result.users}; ${tr('Сессионных залов')}: ${result.halls}; ${flags}.` : '';
   return http + tr(labels[result?.kind] || 'Запрос не отправлялся.') + summary;
 }

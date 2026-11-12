@@ -100,13 +100,15 @@ app.whenReady().then(async () => {
   await new Promise(resolve => setTimeout(resolve, 1100));
   M.requestJSON = async (_net, _session, _definition, input, _signal, token) => {
     assert.equal(token, 'fictional-private-session'); assert.equal(input.auth, 'session');
-    if (input.method === 'GET') return { roomName: input.url.split('/').at(-1), moderators: [], anonymousModerators: [], onlineUsers: [], sessionHalls: [] };
+    if (input.method === 'GET') return { roomName: input.url.split('/').at(-1), moderators: [], anonymousModerators: [], onlineUsers: [], sessionHalls: [], sipSettings: { sipUri: 'sip:private@fictional.test', phoneNumbers: [] }, roomStream: { isEnabled: false, isActive: false, viewersCount: 0, streamKey: 'private-stream-key' } };
     puts++; assert.equal(records[0].data.pending.status, 'unknown');
     return { roomName: input.url.split('/').at(-1), title: input.body.title };
   };
   result = await invoke('create', { title: 'Встреча команды', confirm: true });
   assert.equal(result.pending?.status, 'created', JSON.stringify(result)); assert.equal(puts, 1);
   assert.equal(result.lastAttempt.check.kind, 'default'); assert.equal(result.lastAttempt.write.kind, 'created');
+  assert.equal(result.lastAttempt.check.sipAvailable, true); assert.equal(result.lastAttempt.check.streamEnabled, false);
+  assert.doesNotMatch(JSON.stringify(result.lastAttempt), /sip:|private-stream-key/);
   assert.equal((await invoke('create', { title: 'Must not repeat', confirm: true })).error, 'pending');
   await host.invoke(bundle.manifest.id, 'insert', {}, { editorId: 'fictional-editor', draft: { body: 'Agenda must survive' } });
   assert.match(patch.body, /^Agenda must survive\n\n/); assert.match(patch.location, /^https:\/\/diy.ktalk.ru\/aster/);
@@ -131,6 +133,7 @@ app.whenReady().then(async () => {
   result = await host.invoke(bundle.manifest.id, 'create-meeting-room', {}, editor);
   assert.equal(result.error, undefined); assert.equal(puts, 1);
   assert.match(patch.location, /^https:\/\/diy.ktalk.ru\/aster/);
+  assert.doesNotMatch(JSON.stringify(patch), /sip:|private-stream-key/);
   await host.invoke(bundle.manifest.id, 'create-meeting-room', {}, editor); assert.equal(puts, 1);
   await host.invoke(bundle.manifest.id, 'create-meeting-room', {}, { ...editor, editorId: 'another-calendar-editor' }); assert.equal(puts, 2);
   M.requestJSON = originalRequest;

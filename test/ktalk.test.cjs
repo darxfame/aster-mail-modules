@@ -128,7 +128,7 @@ test('fresh-address GET 200 default settings permits one PUT and keeps safe dura
   assert.equal((await restart.commands.create({ title: 'Again', confirm: true })).error, 'pending');
 });
 test('configured, active and malformed GET 200 results block PUT and remain visible without pending state', async () => {
-  for (const change of [{ title: 'Existing' }, { description: 'Private' }, { moderators: [{ key: 'private-user' }] }, { onlineUsers: [{ name: 'Private name' }] }, { anonymousModerators: ['private'] }, { sessionHalls: [{ title: 'Private' }] }, { pinCode: '1234' }, { sipSettings: {} }, { roomName: 'wrong' }, { moderators: 'invalid' }]) {
+  for (const change of [{ title: 'Existing' }, { description: 'Private' }, { moderators: [{ key: 'private-user' }] }, { onlineUsers: [{ name: 'Private name' }] }, { anonymousModerators: ['private'] }, { sessionHalls: [{ title: 'Private' }] }, { pinCode: '1234' }, { roomStream: { isEnabled: true } }, { roomStream: { isActive: true } }, { roomStream: { viewersCount: 1 } }, { sipSettings: [] }, { roomStream: { isEnabled: 'false' } }, { roomName: 'wrong' }, { moderators: 'invalid' }]) {
     const f = await fixture(input => ({ ...defaultRoom(input.url.split('/').at(-1)), ...change }), configured);
     const result = await f.commands.create({ title: 'Fictional', confirm: true });
     assert.ok(['read', 'collision'].includes(result.error)); assert.equal(f.requests.length, 1);
@@ -136,6 +136,21 @@ test('configured, active and malformed GET 200 results block PUT and remain visi
     assert.match(result.lastAttempt.url, /\/aster[a-f0-9]{32}$/);
     assert.doesNotMatch(JSON.stringify(result.lastAttempt), /Private|private-user|1234/);
     assert.deepEqual((await f.commands.settings()).lastAttempt, result.lastAttempt);
+  }
+});
+test('calendar accepts default SIP/disabled stream metadata and inserts only the HTTPS room URL', async () => {
+  for (const metadata of [{ sipSettings: {}, roomStream: {} }, { sipSettings: { sipUri: '', sipNumber: '', phoneNumbers: [] }, roomStream: { isEnabled: false, isActive: false, viewersCount: 0 } }, { sipSettings: { sipUri: 'sip:private@fictional.test', sipNumber: 'private-number', phoneNumbers: ['private-phone'] }, roomStream: { isEnabled: false, isActive: false, viewersCount: 0, streamKey: 'private-stream-key' } }]) {
+    const f = await fixture(input => input.method === 'GET' ? { ...defaultRoom(input.url.split('/').at(-1)), ...metadata } : { roomName: input.url.split('/').at(-1), title: input.body.title }, configured);
+    f.api.draft = { title: 'Fictional', body: 'Keep agenda', location: '' };
+    const result = await f.commands['create-meeting-room']({}, { editorId: 'calendar-editor' });
+    assert.equal(result.error, undefined); assert.match(result.url, /^https:\/\/app\.ktalk\.ru\/aster[a-f0-9]{32}$/);
+    assert.deepEqual(f.requests.map(request => request.method), ['GET', 'PUT']);
+    assert.equal(f.writes[0].input.location, result.url); assert.match(f.writes[0].input.body, /^Keep agenda\n\nJoin KTalk: https:/);
+    assert.doesNotMatch(JSON.stringify(f.state().lastAttempt), /sip:|private-number|private-phone|private-stream-key/);
+    assert.doesNotMatch(JSON.stringify(f.writes), /sip:|private-/);
+    assert.equal(f.state().lastAttempt.check.hasPin, false); assert.equal(f.state().lastAttempt.check.streamActive, false);
+    await f.commands['create-meeting-room']({}, { editorId: 'calendar-editor' });
+    assert.equal(f.requests.filter(request => request.method === 'PUT').length, 1);
   }
 });
 test('diagnostics persist read failures, uncertain PUT and read-only verification without copying service errors', async () => {

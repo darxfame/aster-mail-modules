@@ -25,13 +25,22 @@ export function inspectRoom(room, name) {
   if (['title', 'description', 'pinCode'].some(key => room[key] != null && typeof room[key] !== 'string')) return { kind: 'invalid' };
   const lists = ['moderators', 'anonymousModerators', 'onlineUsers', 'sessionHalls'];
   if (lists.some(key => !Array.isArray(room[key]))) return { kind: 'invalid' };
+  const sip = room.sipSettings, stream = room.roomStream;
+  if ([sip, stream].some(value => value != null && (typeof value !== 'object' || Array.isArray(value)))) return { kind: 'invalid' };
+  if (sip && (['sipNumber', 'sipUri'].some(key => sip[key] != null && typeof sip[key] !== 'string') || sip.phoneNumbers != null && (!Array.isArray(sip.phoneNumbers) || sip.phoneNumbers.some(value => typeof value !== 'string')))) return { kind: 'invalid' };
+  if (stream && (['isEnabled', 'isActive'].some(key => stream[key] != null && typeof stream[key] !== 'boolean') || stream.viewersCount != null && (!Number.isInteger(stream.viewersCount) || stream.viewersCount < 0))) return { kind: 'invalid' };
   const summary = {
     hasTitle: Boolean(room.title), hasDescription: Boolean(room.description),
     moderators: room.moderators.length + room.anonymousModerators.length,
     users: room.onlineUsers.length, halls: room.sessionHalls.length,
-    protected: Boolean(room.pinCode || room.sipSettings || room.roomStream)
+    hasPin: Boolean(room.pinCode),
+    // SIP read-only dialing metadata does not prove that a room is occupied.
+    // Never copy SIP addresses or stream keys into diagnostics or meeting links.
+    sipAvailable: Boolean(sip?.sipUri || sip?.sipNumber || sip?.phoneNumbers?.length),
+    streamEnabled: stream?.isEnabled === true,
+    streamActive: stream?.isActive === true || (stream?.viewersCount || 0) > 0
   };
-  const configured = summary.hasTitle || summary.hasDescription || summary.moderators || summary.users || summary.halls || summary.protected;
+  const configured = summary.hasTitle || summary.hasDescription || summary.moderators || summary.users || summary.halls || summary.hasPin || summary.streamEnabled || summary.streamActive;
   return { kind: configured ? 'configured' : 'default', ...summary };
 }
 

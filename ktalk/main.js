@@ -1,5 +1,5 @@
 import { servers } from './config.js';
-import { translator } from './i18n.js';
+import { translator, roomError } from './i18n.js';
 import { serverOrigin, roomURL, newRoomName, draftPatch } from './core.js';
 
 export async function activate(api) {
@@ -20,7 +20,7 @@ export async function activate(api) {
     const name = newRoomName(), url = `${state.server}/${name}`;
     // The official PUT is an upsert. Never intentionally change an existing room.
     try { await request(state, name); return { error: 'collision' }; }
-    catch (error) { if (error.code !== 'http-error' || error.status !== 404) return { error: 'read', status: error.status || null }; }
+    catch (error) { if (error.code !== 'http-error' || error.status !== 404) return { error: 'read', stage: 'check', status: error.status || null }; }
     state.pending = { server: state.server, name, url, title, status: 'unknown', ...(input.editorId ? { editorId: input.editorId } : {}) };
     // Persist intent BEFORE writing. A crash or account retirement cannot enable replay.
     await save(state);
@@ -77,7 +77,7 @@ export async function activate(api) {
         if (state.pending) { delete state.pending; await save(state); }
         result = await createRoom({ title: ((draft.title || '').trim() || tr('Новая встреча')).slice(0, 128), confirm: true, editorId: context.editorId });
       }
-      if (result.error) return fail(result.error === 'key' ? 'Сначала настройте вход в Толк в разделе «Модули».' : 'Не удалось подтвердить создание комнаты. Проверьте результат в настройках модуля.');
+      if (result.error) return result.error === 'key' ? fail('Сначала настройте вход в Толк в разделе «Модули».') : { message: roomError(result, tr), error: true };
       // The host rejects stale editors and asks before replacing newer field values.
       let patch;
       try { patch = draftPatch(draft, result.pending.url, tr('Подключиться в Толке')); }

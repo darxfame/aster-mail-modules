@@ -1,4 +1,11 @@
 const en = {
+  'Проверка адреса комнаты не выполнена. Запрос создания не отправлялся.': 'The room address check failed. No creation request was sent.',
+  'Авторизация Толка отклонена. Выполните вход заново или проверьте API-ключ.': 'KTalk rejected authentication. Sign in again or check the API key.',
+  'Толк запретил доступ к комнатам. Проверьте права пользователя или API-ключа в пространстве.': 'KTalk denied room access. Check the user or API key permissions in the workspace.',
+  'Толк ограничил частоту запросов. Попробуйте позже.': 'KTalk rate limit reached. Try later.',
+  'Нет подтверждённого ответа Толка. Проверьте подключение и адрес пространства.': 'No confirmed KTalk response. Check connectivity and the workspace address.',
+  'Запрос создания отклонён Толком.': 'KTalk rejected the creation request.',
+  'Сессия сохранена. Права на создание комнат проверяются отдельно.': 'Session saved. Room creation permissions are checked separately.',
   'Для корпоративного SSO укажите адрес пространства компании, например company.ktalk.ru.': 'For corporate SSO, enter your company workspace address, such as company.ktalk.ru.',
   'Для корпоративного SSO укажите адрес пространства компании, например company.ktalk.ru. Вход выполняется в это пространство Толка.': 'For corporate SSO, enter your company workspace address, such as company.ktalk.ru. Sign-in uses that KTalk workspace.',
   'Войти через SSO пространства': 'Sign in with workspace SSO',
@@ -70,3 +77,19 @@ const en = {
   'Подтверждаю создание комнаты': 'Confirm room creation'
 };
 export const translator = language => value => language === 'en' ? en[value] || value : value;
+
+// Never display service response bodies, URLs or exception messages here.
+export function roomError(result, tr) {
+  const status = Number.isInteger(result.status) && result.status >= 400 && result.status <= 599 ? result.status : null;
+  const reasons = {
+    401: 'Авторизация Толка отклонена. Выполните вход заново или проверьте API-ключ.',
+    403: 'Толк запретил доступ к комнатам. Проверьте права пользователя или API-ключа в пространстве.',
+    429: 'Толк ограничил частоту запросов. Попробуйте позже.'
+  };
+  const reason = reasons[status] ? tr(reasons[status]) : !status ? tr('Нет подтверждённого ответа Толка. Проверьте подключение и адрес пространства.') : '';
+  const prefix = result.error === 'read' && result.stage === 'check' ? 'Проверка адреса комнаты не выполнена. Запрос создания не отправлялся.'
+    : result.error === 'collision' ? 'Случайный адрес уже занят. Новая комната не создана.'
+    : result.error === 'rejected' ? 'Запрос создания отклонён Толком.'
+    : 'Результат неизвестен. Проверьте комнату в Толке. Создание не повторяется.';
+  return [tr(prefix), result.error === 'collision' ? '' : reason, status ? `HTTP ${status}.` : ''].filter(Boolean).join(' ');
+}

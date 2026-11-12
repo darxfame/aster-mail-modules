@@ -80,6 +80,22 @@ app.whenReady().then(async () => {
   assert.doesNotMatch(JSON.stringify(result), /fictional-private-session/);
   assert.doesNotMatch(JSON.stringify(await host.catalog()), /fictional-private-session/);
   const originalRequest = M.requestJSON;
+  for (const status of [401, 403, 429, null]) {
+    // Each case represents a separate user action; honor the SDK's 40 calls/s limit.
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    let reads = 0;
+    M.requestJSON = async (_net, _session, _definition, input, _signal, token) => {
+      assert.equal(token, 'fictional-private-session'); assert.equal(input.method, 'GET'); reads++;
+      throw Object.assign(new Error('fictional-private-response'), { code: status ? 'http-error' : 'network-unknown', ...(status ? { status } : {}) });
+    };
+    const failed = await host.invoke(bundle.manifest.id, 'create-meeting-room', {}, { editorId: 'failed-preflight', draft: {} });
+    assert.equal(failed.error, true); assert.match(failed.message, /Запрос создания не отправлялся/);
+    if (status) assert.match(failed.message, new RegExp(`HTTP ${status}`));
+    assert.doesNotMatch(failed.message, /fictional-private/);
+    assert.equal(reads, 1); assert.equal(records[0].data.pending, undefined);
+    assert.equal((await invoke('settings')).auth.connected, true);
+  }
+  await new Promise(resolve => setTimeout(resolve, 1100));
   M.requestJSON = async (_net, _session, _definition, input, _signal, token) => {
     assert.equal(token, 'fictional-private-session'); assert.equal(input.auth, 'session');
     if (input.method === 'GET') throw Object.assign(new Error('Fictional missing room'), { code: 'http-error', status: 404 });

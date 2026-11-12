@@ -73,6 +73,45 @@ test('GET failures and existing rooms never become a PUT; verification is read-o
   assert.equal((await f.commands.acknowledge({ confirm: false })).error, 'pending');
   await f.commands.acknowledge({ confirm: true }); assert.equal(f.state().pending, undefined);
 });
+test('SSO preflight failures explain the actual stage and HTTP status without creating a room', async () => {
+  for (const language of ['ru', 'en']) {
+    for (const status of [401, 403, 429, 500, null]) {
+      const f = await fixture(() => { throw Object.assign(new Error('private-token private-response https://company.example.test'), { code: status ? 'http-error' : 'network-unknown', status }); }, { server: 'https://diy.ktalk.ru' });
+      f.setAuth({ connected: true, origin: 'https://diy.ktalk.ru' });
+      const call = f.api.call;
+      f.api.call = (method, input) => method === 'ui.context' ? { language } : call(method, input);
+      f.api.draft = { title: 'Fictional meeting', body: 'Preserve agenda' };
+      const result = await f.commands['create-meeting-room']({}, { editorId: 'draft' });
+      assert.equal(result.error, true);
+      assert.match(result.message, language === 'ru' ? /Запрос создания не отправлялся/ : /No creation request was sent/);
+      if (status) assert.match(result.message, new RegExp(`HTTP ${status}`));
+      if (status === 403) assert.match(result.message, language === 'ru' ? /Проверьте права/ : /Check the user/);
+      assert.doesNotMatch(result.message, /private-token|private-response|company\.example/);
+      assert.equal(f.requests.length, 1); assert.equal(f.requests[0].method, 'GET');
+      assert.equal(f.state().pending, undefined); assert.equal(f.writes.length, 0);
+    }
+  }
+});
+test('calendar distinguishes collisions, rejected creation and uncertain writes', async () => {
+  for (const failure of ['collision', 403, 500, 'invalid']) {
+    const f = await fixture(input => {
+      if (input.method === 'GET') { if (failure === 'collision') return {}; return notFound(); }
+      if (failure === 'invalid') return {};
+      throw { code: 'http-error', status: failure };
+    }, configured);
+    f.api.draft = { title: 'Fictional', body: '' };
+    const result = await f.commands['create-meeting-room']({}, { editorId: 'draft' });
+    assert.equal(result.error, true);
+    assert.match(result.message, failure === 'collision' ? /already taken/ : failure === 403 ? /rejected the creation request/ : /Creation will not be repeated/);
+    assert.doesNotMatch(result.message, /No creation request was sent/);
+    assert.equal(f.writes.length, 0);
+    if (failure !== 'collision') {
+      assert.equal(f.state().pending.status, failure === 403 ? 'rejected' : 'unknown');
+      await f.commands['create-meeting-room']({}, { editorId: 'draft' });
+      assert.equal(f.requests.filter(request => request.method === 'PUT').length, 1);
+    }
+  }
+});
 test('corporate sessions use a host handle, never expose tokens and can be cleared', async () => {
   const f = await fixture(input => { if (input.method === 'GET') return notFound(); assert.equal(input.auth, 'session'); assert.equal(input.headers, undefined); return { roomName: input.url.split('/').at(-1), title: input.body.title }; }, { server: 'https://diy.ktalk.ru' });
   assert.equal((await f.commands.create({ title: 'Fictional', confirm: true })).error, 'key');

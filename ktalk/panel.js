@@ -1,4 +1,4 @@
-import { translator } from './i18n.js';
+import { translator, roomError } from './i18n.js';
 const $ = selector => document.querySelector(selector);
 const bridge = window.asterModule;
 let tr = value => value, state = {}, busy = false;
@@ -19,7 +19,7 @@ const messages = {
 };
 function render() {
   const auth = state.auth || {};
-  $('#auth-state').textContent = auth.blockedOrigin ? `${tr('Этот сервер входа не поддержан версией модуля. Обновите модуль или сообщите его разработчику:')} ${auth.blockedOrigin}` : tr(auth.pending ? 'Завершите вход в отдельном окне Толка.' : auth.connected && auth.origin === state.server ? 'Вход выполнен. Сессия хранится защищённо в Aster Mail.' : 'Для создания комнат войдите в Толк или укажите ключ API.');
+  $('#auth-state').textContent = auth.blockedOrigin ? `${tr('Этот сервер входа не поддержан версией модуля. Обновите модуль или сообщите его разработчику:')} ${auth.blockedOrigin}` : tr(auth.pending ? 'Завершите вход в отдельном окне Толка.' : auth.connected && auth.origin === state.server ? 'Сессия сохранена. Права на создание комнат проверяются отдельно.' : 'Для создания комнат войдите в Толк или укажите ключ API.');
   $('#key-hint').textContent = tr(state.hasKey ? 'Ключ сохранён. Оставьте поле пустым, чтобы сохранить его.' : 'Ключ нужен только для создания комнат.');
   $('#clear-key').disabled = !state.hasKey;
   $('#logout').disabled = !auth.connected && !auth.pending;
@@ -38,7 +38,7 @@ async function run(command, input, success) {
   try {
     const value = await bridge.command(command, input);
     if (typeof value?.server === 'string') state = { ...state, ...value };
-    $('#status').textContent = tr(value?.error ? messages[value.error] || messages.unknown : success || '');
+    $('#status').textContent = value?.error && value.stage === 'check' ? roomError(value, tr) : tr(value?.error ? messages[value.error] || messages.unknown : success || '');
     $('#status').classList.toggle('error', Boolean(value?.error));
     return value;
   } catch {

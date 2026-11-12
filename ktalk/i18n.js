@@ -1,4 +1,26 @@
 const en = {
+  'Последняя попытка создания': 'Last creation attempt',
+  'Адрес комнаты': 'Room address',
+  'Проверка GET': 'GET check',
+  'Создание PUT': 'PUT creation',
+  'Повторная проверка GET': 'GET verification',
+  'Показаны только результат и признаки ответа. Токены, имена участников и сырые ответы не сохраняются в журнале проверки.': 'Only the result and response flags are shown. Tokens, participant names and raw responses are not stored in the check log.',
+  'Проверка выполняется.': 'Check in progress.',
+  'Получены настройки по умолчанию; успешный GET не означает, что адрес занят.': 'Default settings received; a successful GET does not mean the address is taken.',
+  'Найдены настройки или активность комнаты. Изменение заблокировано.': 'Room configuration or activity found. Changes blocked.',
+  'Комната не найдена.': 'Room not found.',
+  'Ответ не соответствует ожидаемому формату или адресу комнаты.': 'The response does not match the expected format or room address.',
+  'Запрос не отправлялся.': 'Request was not sent.',
+  'Создание подтверждено по адресу и названию комнаты.': 'Creation confirmed by room address and title.',
+  'Результат неизвестен. Используйте «Проверить комнату»; запись не повторяется.': 'Result unknown. Use Check room; the write will not be repeated.',
+  'Запрос отклонён.': 'Request rejected.',
+  'Проверка подтвердила адрес и название комнаты.': 'Verification confirmed the room address and title.',
+  'Проверка не выполнена.': 'Check failed.',
+  'Название задано': 'Title present',
+  'Модераторов': 'Moderators',
+  'Участников онлайн': 'Users online',
+  'Да': 'Yes',
+  'Нет': 'No',
   'Проверка адреса комнаты не выполнена. Запрос создания не отправлялся.': 'The room address check failed. No creation request was sent.',
   'Авторизация Толка отклонена. Выполните вход заново или проверьте API-ключ.': 'KTalk rejected authentication. Sign in again or check the API key.',
   'Толк запретил доступ к комнатам. Проверьте права пользователя или API-ключа в пространстве.': 'KTalk denied room access. Check the user or API key permissions in the workspace.',
@@ -86,10 +108,23 @@ export function roomError(result, tr) {
     403: 'Толк запретил доступ к комнатам. Проверьте права пользователя или API-ключа в пространстве.',
     429: 'Толк ограничил частоту запросов. Попробуйте позже.'
   };
-  const reason = reasons[status] ? tr(reasons[status]) : !status ? tr('Нет подтверждённого ответа Толка. Проверьте подключение и адрес пространства.') : '';
+  const reason = result.invalid ? tr('Ответ не соответствует ожидаемому формату или адресу комнаты.') : reasons[status] ? tr(reasons[status]) : !status ? tr('Нет подтверждённого ответа Толка. Проверьте подключение и адрес пространства.') : '';
   const prefix = result.error === 'read' && result.stage === 'check' ? 'Проверка адреса комнаты не выполнена. Запрос создания не отправлялся.'
     : result.error === 'collision' ? 'Случайный адрес уже занят. Новая комната не создана.'
     : result.error === 'rejected' ? 'Запрос создания отклонён Толком.'
     : 'Результат неизвестен. Проверьте комнату в Толке. Создание не повторяется.';
   return [tr(prefix), result.error === 'collision' ? '' : reason, status ? `HTTP ${status}.` : ''].filter(Boolean).join(' ');
+}
+
+export function inspectionText(result, tr) {
+  const labels = {
+    checking: 'Проверка выполняется.', default: 'Получены настройки по умолчанию; успешный GET не означает, что адрес занят.',
+    configured: 'Найдены настройки или активность комнаты. Изменение заблокировано.', missing: 'Комната не найдена.',
+    invalid: 'Ответ не соответствует ожидаемому формату или адресу комнаты.', 'not-sent': 'Запрос не отправлялся.',
+    created: 'Создание подтверждено по адресу и названию комнаты.', unknown: 'Результат неизвестен. Используйте «Проверить комнату»; запись не повторяется.',
+    rejected: 'Запрос отклонён.', confirmed: 'Проверка подтвердила адрес и название комнаты.', failed: 'Проверка не выполнена.'
+  };
+  const http = result?.http === '2xx' || Number.isInteger(result?.http) && result.http >= 400 && result.http <= 599 ? `HTTP ${result.http}. ` : '';
+  const summary = ['default', 'configured'].includes(result?.kind) ? ` ${tr('Название задано')}: ${tr(result.hasTitle ? 'Да' : 'Нет')}; ${tr('Модераторов')}: ${result.moderators}; ${tr('Участников онлайн')}: ${result.users}.` : '';
+  return http + tr(labels[result?.kind] || 'Запрос не отправлялся.') + summary;
 }

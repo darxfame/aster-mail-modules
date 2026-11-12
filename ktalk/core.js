@@ -18,6 +18,23 @@ export function newRoomName() {
   return `aster${crypto.randomUUID().replaceAll('-', '')}`;
 }
 
+// GET returns default settings for a fresh address, not necessarily a 404.
+// Record only flags/counts, never names, titles, participant data or service IDs.
+export function inspectRoom(room, name) {
+  if (!room || typeof room !== 'object' || Array.isArray(room) || room.roomName !== name) return { kind: 'invalid' };
+  if (['title', 'description', 'pinCode'].some(key => room[key] != null && typeof room[key] !== 'string')) return { kind: 'invalid' };
+  const lists = ['moderators', 'anonymousModerators', 'onlineUsers', 'sessionHalls'];
+  if (lists.some(key => !Array.isArray(room[key]))) return { kind: 'invalid' };
+  const summary = {
+    hasTitle: Boolean(room.title), hasDescription: Boolean(room.description),
+    moderators: room.moderators.length + room.anonymousModerators.length,
+    users: room.onlineUsers.length, halls: room.sessionHalls.length,
+    protected: Boolean(room.pinCode || room.sipSettings || room.roomStream)
+  };
+  const configured = summary.hasTitle || summary.hasDescription || summary.moderators || summary.users || summary.halls || summary.protected;
+  return { kind: configured ? 'configured' : 'default', ...summary };
+}
+
 export function draftPatch(draft, url, label) {
   // Preserve the current description, including manually typed non-KTalk links.
   if (draft?.truncated) throw new Error('truncated');

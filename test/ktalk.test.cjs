@@ -24,6 +24,8 @@ async function fixture(network, initial = {}) {
 }
 const notFound = () => { throw Object.assign(new Error('fictional missing room'), { code: 'http-error', status: 404 }); };
 const configured = { server: 'https://app.ktalk.ru', apiKey: 'fictional-secret' };
+// Shape observed in the public demo GET for a fresh random address (no real IDs).
+const defaultRoom = name => ({ roomName: name, moderators: [], anonymousModerators: [], onlineUsers: [], sessionHalls: [], conferenceId: 'fictional-conference' });
 test('server and room parsing accepts custom HTTPS and test_room but rejects escapes', async () => {
   const { serverOrigin, roomURL } = await import('../ktalk/core.js');
   assert.equal(serverOrigin('app.ktalk.ru'), 'https://app.ktalk.ru');
@@ -95,7 +97,7 @@ test('SSO preflight failures explain the actual stage and HTTP status without cr
 test('calendar distinguishes collisions, rejected creation and uncertain writes', async () => {
   for (const failure of ['collision', 403, 500, 'invalid']) {
     const f = await fixture(input => {
-      if (input.method === 'GET') { if (failure === 'collision') return {}; return notFound(); }
+      if (input.method === 'GET') { if (failure === 'collision') return { ...defaultRoom(input.url.split('/').at(-1)), title: 'Existing fictional room' }; return notFound(); }
       if (failure === 'invalid') return {};
       throw { code: 'http-error', status: failure };
     }, configured);
@@ -109,6 +111,59 @@ test('calendar distinguishes collisions, rejected creation and uncertain writes'
       assert.equal(f.state().pending.status, failure === 403 ? 'rejected' : 'unknown');
       await f.commands['create-meeting-room']({}, { editorId: 'draft' });
       assert.equal(f.requests.filter(request => request.method === 'PUT').length, 1);
+    }
+  }
+});
+test('fresh-address GET 200 default settings permits one PUT and keeps safe durable diagnostics', async () => {
+  const f = await fixture(input => input.method === 'GET' ? defaultRoom(input.url.split('/').at(-1)) : { roomName: input.url.split('/').at(-1), title: input.body.title }, configured);
+  const result = await f.commands.create({ title: 'Private meeting title', confirm: true });
+  assert.equal(result.pending.status, 'created');
+  assert.deepEqual(f.requests.map(request => request.method), ['GET', 'PUT']);
+  assert.equal(result.lastAttempt.url, result.pending.url);
+  assert.equal(result.lastAttempt.check.kind, 'default'); assert.equal(result.lastAttempt.check.http, '2xx');
+  assert.equal(result.lastAttempt.write.kind, 'created');
+  assert.doesNotMatch(JSON.stringify(result.lastAttempt), /Private meeting title|fictional-secret|fictional-conference/);
+  const restart = await fixture(() => assert.fail('No replay after restart'), f.state());
+  assert.deepEqual((await restart.commands.settings()).lastAttempt, result.lastAttempt);
+  assert.equal((await restart.commands.create({ title: 'Again', confirm: true })).error, 'pending');
+});
+test('configured, active and malformed GET 200 results block PUT and remain visible without pending state', async () => {
+  for (const change of [{ title: 'Existing' }, { description: 'Private' }, { moderators: [{ key: 'private-user' }] }, { onlineUsers: [{ name: 'Private name' }] }, { anonymousModerators: ['private'] }, { sessionHalls: [{ title: 'Private' }] }, { pinCode: '1234' }, { sipSettings: {} }, { roomName: 'wrong' }, { moderators: 'invalid' }]) {
+    const f = await fixture(input => ({ ...defaultRoom(input.url.split('/').at(-1)), ...change }), configured);
+    const result = await f.commands.create({ title: 'Fictional', confirm: true });
+    assert.ok(['read', 'collision'].includes(result.error)); assert.equal(f.requests.length, 1);
+    assert.equal(f.state().pending, undefined); assert.equal(result.lastAttempt.write.kind, 'not-sent');
+    assert.match(result.lastAttempt.url, /\/aster[a-f0-9]{32}$/);
+    assert.doesNotMatch(JSON.stringify(result.lastAttempt), /Private|private-user|1234/);
+    assert.deepEqual((await f.commands.settings()).lastAttempt, result.lastAttempt);
+  }
+});
+test('diagnostics persist read failures, uncertain PUT and read-only verification without copying service errors', async () => {
+  const failedRead = await fixture(() => { throw { code: 'http-error', status: 403, message: 'private-response' }; }, configured);
+  const result = await failedRead.commands.create({ title: 'Fictional', confirm: true });
+  assert.equal(result.lastAttempt.check.http, 403); assert.equal(result.lastAttempt.write.kind, 'not-sent');
+  let verify = false;
+  const f = await fixture(input => {
+    if (input.method === 'PUT') throw { code: 'network-unknown', message: 'private-response' };
+    const room = defaultRoom(input.url.split('/').at(-1)); return verify ? { ...room, title: 'Fictional' } : room;
+  }, configured);
+  assert.equal((await f.commands.create({ title: 'Fictional', confirm: true })).lastAttempt.write.kind, 'unknown');
+  assert.equal((await f.commands.check()).lastAttempt.verification.kind, 'invalid');
+  verify = true; assert.equal((await f.commands.check()).lastAttempt.verification.kind, 'confirmed');
+  assert.equal(f.requests.filter(request => request.method === 'PUT').length, 1);
+  assert.doesNotMatch(JSON.stringify(f.state().lastAttempt), /private-response/);
+});
+test('storage failures prevent an unrecorded PUT and preserve unknown intent after a completed PUT', async () => {
+  for (const failAt of [1, 2, 3, 4]) {
+    const f = await fixture(input => input.method === 'GET' ? defaultRoom(input.url.split('/').at(-1)) : { roomName: input.url.split('/').at(-1), title: input.body.title }, configured);
+    const call = f.api.call; let saves = 0;
+    f.api.call = async (method, input) => { if (method === 'storage.set' && ++saves === failAt) throw new Error('Fictional storage failure'); return call(method, input); };
+    await assert.rejects(f.commands.create({ title: 'Fictional', confirm: true }), /storage failure/);
+    assert.equal(f.requests.filter(request => request.method === 'PUT').length, failAt === 4 ? 1 : 0);
+    if (failAt === 4) {
+      assert.equal(f.state().pending.status, 'unknown');
+      const restart = await fixture(() => assert.fail('No replay'), f.state());
+      assert.equal((await restart.commands.create({ title: 'Again', confirm: true })).error, 'pending');
     }
   }
 });

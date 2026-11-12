@@ -1,11 +1,11 @@
 import { servers } from './config.js';
 import { translator, roomError } from './i18n.js';
-import { serverOrigin, roomURL, newRoomName, draftPatch } from './core.js';
+import { serverOrigin, roomURL, newRoomName, draftPatch, inspectRoom } from './core.js';
 
 export async function activate(api) {
   const read = async () => (await api.call('storage.get')) || {};
   const save = value => api.call('storage.set', value);
-  const safe = state => ({ server: state.server || '', servers, hasKey: Boolean(state.apiKey), pending: state.pending || null });
+  const safe = state => ({ server: state.server || '', servers, hasKey: Boolean(state.apiKey), pending: state.pending || null, lastAttempt: state.lastAttempt || null });
   const settings = async state => ({ ...safe(state), auth: await api.call('auth.status') });
   const request = (state, name, method = 'GET', body) => api.call('network.request', {
     url: `${state.server}/api/Rooms/${name}`, method, ...(body ? { body } : {}), ...(state.apiKey ? { headers: { 'x-auth-token': state.apiKey } } : { auth: 'session' })
@@ -18,10 +18,17 @@ export async function activate(api) {
     const title = typeof input.title === 'string' ? input.title.trim() : '';
     if (!title || title.length > 128 || input.confirm !== true) return { error: 'title' };
     const name = newRoomName(), url = `${state.server}/${name}`;
-    // The official PUT is an upsert. Never intentionally change an existing room.
-    try { await request(state, name); return { error: 'collision' }; }
-    catch (error) { if (error.code !== 'http-error' || error.status !== 404) return { error: 'read', stage: 'check', status: error.status || null }; }
+    state.lastAttempt = { url, at: new Date().toISOString(), check: { kind: 'checking' }, write: { kind: 'not-sent' } };
+    await save(state);
+    // PUT is an upsert. Use only our new random UUID, and reject visible existing
+    // configuration/activity. Default GET settings are not evidence of a collision.
+    try { state.lastAttempt.check = { ...inspectRoom(await request(state, name), name), http: '2xx' }; }
+    catch (error) { state.lastAttempt.check = { kind: error.code === 'http-error' && error.status === 404 ? 'missing' : 'failed', ...(Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? { http: error.status } : {}) }; }
+    await save(state);
+    if (state.lastAttempt.check.kind === 'configured') return { ...safe(state), error: 'collision' };
+    if (!['default', 'missing'].includes(state.lastAttempt.check.kind)) return { ...safe(state), error: 'read', stage: 'check', status: state.lastAttempt.check.http, invalid: state.lastAttempt.check.kind === 'invalid' };
     state.pending = { server: state.server, name, url, title, status: 'unknown', ...(input.editorId ? { editorId: input.editorId } : {}) };
+    state.lastAttempt.write = { kind: 'unknown' };
     // Persist intent BEFORE writing. A crash or account retirement cannot enable replay.
     await save(state);
     let room;
@@ -29,10 +36,12 @@ export async function activate(api) {
     catch (error) {
       const rejected = error.code === 'http-error' && [400, 401, 403, 404, 409, 422, 429].includes(error.status);
       state.pending.status = rejected ? 'rejected' : 'unknown';
+      state.lastAttempt.write = { kind: state.pending.status, ...(Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? { http: error.status } : {}) };
       await save(state);
       return { ...safe(state), error: rejected ? 'rejected' : 'unknown', status: error.status || null };
     }
-    if (!room || room.roomName !== name || room.title !== title) return { ...safe(state), error: 'unknown' };
+    state.lastAttempt.write = { kind: room?.roomName === name && room.title === title ? 'created' : 'invalid', http: '2xx' };
+    if (state.lastAttempt.write.kind !== 'created') { await save(state); return { ...safe(state), error: 'unknown' }; }
     state.pending.status = 'created';
     await save(state);
     return safe(state);
@@ -92,9 +101,16 @@ export async function activate(api) {
       if (!pending || pending.server !== state.server || !state.server || !/^aster[a-f0-9]{32}$/.test(pending.name)) return { error: 'key' };
       try {
         const room = await request(state, pending.name);
-        if (room?.roomName !== pending.name || room.title !== pending.title) return { ...safe(state), error: 'unknown' };
+        state.lastAttempt ||= { url: pending.url, at: new Date().toISOString() };
+        state.lastAttempt.verification = { kind: room?.roomName === pending.name && room.title === pending.title ? 'confirmed' : 'invalid', http: '2xx' };
+        if (state.lastAttempt.verification.kind !== 'confirmed') { await save(state); return { ...safe(state), error: 'unknown' }; }
         pending.status = 'created'; await save(state); return safe(state);
-      } catch (error) { return { ...safe(state), error: error.status === 404 ? 'notfound' : 'read', status: error.status || null }; }
+      } catch (error) {
+        state.lastAttempt ||= { url: pending.url, at: new Date().toISOString() };
+        state.lastAttempt.verification = { kind: 'failed', ...(Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? { http: error.status } : {}) };
+        await save(state);
+        return { ...safe(state), error: error.status === 404 ? 'notfound' : 'read', status: error.status || null };
+      }
     },
     insert: async (input, context) => {
       const state = await read();

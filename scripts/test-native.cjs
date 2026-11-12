@@ -93,17 +93,20 @@ app.whenReady().then(async () => {
     if (status) assert.match(failed.message, new RegExp(`HTTP ${status}`));
     assert.doesNotMatch(failed.message, /fictional-private/);
     assert.equal(reads, 1); assert.equal(records[0].data.pending, undefined);
+    assert.equal(records[0].data.lastAttempt.check.kind, 'failed');
+    assert.equal(records[0].data.lastAttempt.write.kind, 'not-sent');
     assert.equal((await invoke('settings')).auth.connected, true);
   }
   await new Promise(resolve => setTimeout(resolve, 1100));
   M.requestJSON = async (_net, _session, _definition, input, _signal, token) => {
     assert.equal(token, 'fictional-private-session'); assert.equal(input.auth, 'session');
-    if (input.method === 'GET') throw Object.assign(new Error('Fictional missing room'), { code: 'http-error', status: 404 });
+    if (input.method === 'GET') return { roomName: input.url.split('/').at(-1), moderators: [], anonymousModerators: [], onlineUsers: [], sessionHalls: [] };
     puts++; assert.equal(records[0].data.pending.status, 'unknown');
     return { roomName: input.url.split('/').at(-1), title: input.body.title };
   };
   result = await invoke('create', { title: 'Встреча команды', confirm: true });
   assert.equal(result.pending?.status, 'created', JSON.stringify(result)); assert.equal(puts, 1);
+  assert.equal(result.lastAttempt.check.kind, 'default'); assert.equal(result.lastAttempt.write.kind, 'created');
   assert.equal((await invoke('create', { title: 'Must not repeat', confirm: true })).error, 'pending');
   await host.invoke(bundle.manifest.id, 'insert', {}, { editorId: 'fictional-editor', draft: { body: 'Agenda must survive' } });
   assert.match(patch.body, /^Agenda must survive\n\n/); assert.match(patch.location, /^https:\/\/diy.ktalk.ru\/aster/);
@@ -119,6 +122,7 @@ app.whenReady().then(async () => {
   assert.equal(persistedUpgrade.modules[0].data.fixtureMigrationTarget, 'kept');
   assert.equal(persistedUpgrade.modules[0].settingsVersion, 2);
   assert.deepEqual(records[0].data.pending, beforeUpdate.data.pending);
+  assert.deepEqual(records[0].data.lastAttempt, beforeUpdate.data.lastAttempt);
   assert.equal(records[0].auth.token, beforeUpdate.auth.token);
   assert.deepEqual(records[0].originGrants, beforeUpdate.originGrants);
   assert.equal((await invoke('create', { title: 'Must not repeat after update', confirm: true })).error, 'pending'); assert.equal(puts, 1);
@@ -141,12 +145,18 @@ app.whenReady().then(async () => {
     await new Promise(resolve => setTimeout(resolve, 250));
     const ui = await view.webContents.executeJavaScript('({ ready: document.querySelector("#server").value, overflow: document.documentElement.scrollWidth > window.innerWidth, password: document.querySelector("#api-key").value })');
     assert.equal(ui.ready, 'https://diy.ktalk.ru'); assert.equal(ui.overflow, false); assert.equal(ui.password, '');
+    await view.webContents.executeJavaScript('document.querySelector("#connection").open=false');
+    const details = await view.webContents.executeJavaScript('({hidden:document.querySelector("#last-attempt").hidden,url:document.querySelector("#attempt-url").value,check:document.querySelector("#attempt-check").textContent,write:document.querySelector("#attempt-write").textContent})');
+    assert.equal(details.hidden, false); assert.match(details.url, /\/aster[a-f0-9]{32}$/);
+    assert.match(details.check, /HTTP 2xx.*настройки по умолчанию/); assert.match(details.write, /Создание подтверждено/);
+    await new Promise(resolve => setTimeout(resolve, 150));
     const png = await view.webContents.capturePage(); await fs.writeFile(path.join(screenshots, `ktalk-light-${Math.round(scale * 100)}.png`), png.toPNG());
   }
   const view = [...host.views.values()][0].view;
   await view.webContents.executeJavaScript('document.body.dataset.theme="dark"');
+  await new Promise(resolve => setTimeout(resolve, 150));
   await fs.writeFile(path.join(screenshots, 'ktalk-dark-200.png'), (await view.webContents.capturePage()).toPNG());
-  await view.webContents.executeJavaScript('document.querySelector("#api-key").focus(); document.querySelector("#api-key").scrollIntoView({block:"center"})');
+  await view.webContents.executeJavaScript('document.querySelector("#connection").open=true; document.querySelector("#api-key").focus(); document.querySelector("#api-key").scrollIntoView({block:"center"})');
   assert.equal(await view.webContents.executeJavaScript('document.activeElement.id'), 'api-key');
   assert.equal(await view.webContents.executeJavaScript('Boolean(document.querySelector("#create"))'), false);
   await fs.writeFile(path.join(screenshots, 'ktalk-dark-200-bottom.png'), (await view.webContents.capturePage()).toPNG());

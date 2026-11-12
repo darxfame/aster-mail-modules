@@ -1,4 +1,4 @@
-import { translator, roomError } from './i18n.js';
+import { translator, roomError, inspectionText } from './i18n.js';
 const $ = selector => document.querySelector(selector);
 const bridge = window.asterModule;
 let tr = value => value, state = {}, busy = false;
@@ -23,6 +23,16 @@ function render() {
   $('#key-hint').textContent = tr(state.hasKey ? 'Ключ сохранён. Оставьте поле пустым, чтобы сохранить его.' : 'Ключ нужен только для создания комнат.');
   $('#clear-key').disabled = !state.hasKey;
   $('#logout').disabled = !auth.connected && !auth.pending;
+  $('#last-attempt').hidden = !state.lastAttempt;
+  if (state.lastAttempt) {
+    $('#attempt-url').value = state.lastAttempt.url;
+    const date = new Date(state.lastAttempt.at);
+    $('#attempt-time').textContent = Number.isFinite(date.getTime()) ? date.toLocaleString(document.documentElement.lang) : '';
+    $('#attempt-check').textContent = `${tr('Проверка GET')}: ${inspectionText(state.lastAttempt.check, tr)}`;
+    $('#attempt-write').textContent = `${tr('Создание PUT')}: ${inspectionText(state.lastAttempt.write, tr)}`;
+    $('#attempt-verification').hidden = !state.lastAttempt.verification;
+    $('#attempt-verification').textContent = `${tr('Повторная проверка GET')}: ${inspectionText(state.lastAttempt.verification, tr)}`;
+  }
   $('#pending').hidden = !state.pending;
   if (state.pending) {
     $('#room-url').value = state.pending.url;

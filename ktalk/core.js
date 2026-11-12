@@ -14,8 +14,15 @@ export function roomURL(value, origins) {
   return url.href;
 }
 
-export function newRoomName() {
-  return `aster${crypto.randomUUID().replaceAll('-', '')}`;
+export function roomPrefix(value = 'aster') {
+  if (typeof value !== 'string') throw new Error('prefix');
+  const prefix = value.trim().toLowerCase();
+  if (!/^[a-z0-9]{0,24}$/.test(prefix)) throw new Error('prefix');
+  return prefix;
+}
+
+export function newRoomName(prefix) {
+  return `${roomPrefix(prefix)}${crypto.randomUUID().replaceAll('-', '')}`;
 }
 
 // GET returns default settings for a fresh address, not necessarily a 404.

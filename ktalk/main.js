@@ -1,11 +1,11 @@
 import { servers } from './config.js';
 import { translator, roomError } from './i18n.js';
-import { serverOrigin, roomURL, newRoomName, draftPatch, inspectRoom } from './core.js';
+import { serverOrigin, roomURL, roomPrefix, newRoomName, draftPatch, inspectRoom } from './core.js';
 
 export async function activate(api) {
   const read = async () => (await api.call('storage.get')) || {};
   const save = value => api.call('storage.set', value);
-  const safe = state => ({ server: state.server || '', servers, hasKey: Boolean(state.apiKey), pending: state.pending || null, lastAttempt: state.lastAttempt || null });
+  const safe = state => ({ server: state.server || '', servers, roomPrefix: roomPrefix(state.roomPrefix), hasKey: Boolean(state.apiKey), pending: state.pending || null, lastAttempt: state.lastAttempt || null });
   const settings = async state => ({ ...safe(state), auth: await api.call('auth.status') });
   const request = (state, name, method = 'GET', body) => api.call('network.request', {
     url: `${state.server}/api/Rooms/${name}`, method, ...(body ? { body } : {}), ...(state.apiKey ? { headers: { 'x-auth-token': state.apiKey } } : { auth: 'session' })
@@ -17,7 +17,7 @@ export async function activate(api) {
     if (!state.server || !state.apiKey && (!auth.connected || auth.origin !== state.server)) return { error: 'key' };
     const title = typeof input.title === 'string' ? input.title.trim() : '';
     if (!title || title.length > 128 || input.confirm !== true) return { error: 'title' };
-    const name = newRoomName(), url = `${state.server}/${name}`;
+    const name = newRoomName(state.roomPrefix), url = `${state.server}/${name}`;
     state.lastAttempt = { url, at: new Date().toISOString(), check: { kind: 'checking' }, write: { kind: 'not-sent' } };
     await save(state);
     // PUT is an upsert. Use only our new random UUID, and reject visible existing
@@ -72,6 +72,12 @@ export async function activate(api) {
       return safe({ ...state, server, apiKey });
     },
     create: createRoom,
+    'save-prefix': async input => {
+      let prefix;
+      try { if (typeof input.prefix !== 'string') throw new Error('prefix'); prefix = roomPrefix(input.prefix); } catch { return { error: 'prefix' }; }
+      const state = await read();
+      state.roomPrefix = prefix; await save(state); return safe(state);
+    },
     'create-meeting-room': async (_input, context) => {
       const tr = translator((await api.call('ui.context')).language);
       const fail = message => ({ message: tr(message), error: true });
@@ -98,7 +104,7 @@ export async function activate(api) {
     },
     check: async () => {
       const state = await read(), pending = state.pending;
-      if (!pending || pending.server !== state.server || !state.server || !/^aster[a-f0-9]{32}$/.test(pending.name)) return { error: 'key' };
+      if (!pending || pending.server !== state.server || !state.server || !/^[a-z0-9]{0,24}[a-f0-9]{32}$/.test(pending.name)) return { error: 'key' };
       try {
         const room = await request(state, pending.name);
         state.lastAttempt ||= { url: pending.url, at: new Date().toISOString() };

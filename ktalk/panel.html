@@ -19,12 +19,20 @@
       <p id="key-hint" class="note"></p>
       <p class="note" data-text>Ключ создаёт администратор Толка: «Управление» → «API ключи» → «Добавить». Попросите права на чтение и изменение комнат. Для входа по готовой ссылке ключ не нужен.</p>
       <div class="actions"><button type="submit" data-text>Сохранить настройки</button><button id="clear-key" type="button" class="quiet" data-text>Удалить ключ</button></div>
-      <div class="actions"><button id="login" type="button" data-text>Войти через SSO пространства</button><button id="logout" type="button" class="quiet" data-text>Удалить сессию Толка</button></div>
-      <p class="note" data-text>Удаление сессии завершает вход. Чтобы также очистить сервер, API-ключ и настройки комнат, используйте полный сброс.</p>
-      <button id="reset" type="button" class="quiet" data-text>Сбросить все настройки Толка</button>
+      <div class="actions"><button id="login" type="button" data-text>Войти через SSO пространства</button></div>
     </form>
     </details>
     <p id="auth-state" class="note" role="status"></p>
+    <div class="actions"><button id="logout" type="button" class="quiet" data-text>Удалить сессию Толка</button><button id="reset" type="button" class="quiet" data-text>Сбросить все настройки Толка</button></div>
+    <p class="note" data-text>Удаление сессии завершает вход. Чтобы также очистить сервер, API-ключ и настройки комнат, используйте полный сброс.</p>
+    <section>
+      <form id="room-settings">
+        <label><span data-text>Префикс комнаты</span><input id="room-prefix" name="prefix" maxlength="24" pattern="[a-zA-Z0-9]*" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="prefix-hint prefix-preview"></label>
+        <p id="prefix-hint" class="note" data-text>До 24 латинских букв и цифр. Буквы станут строчными. Можно оставить пустым. К префиксу добавляются 32 случайных символа.</p>
+        <p id="prefix-preview" class="note"></p>
+        <button type="submit" data-text>Сохранить префикс</button>
+      </form>
+    </section>
     <section id="last-attempt" hidden>
       <h2 data-text>Последняя попытка создания</h2>
       <label><span data-text>Адрес комнаты</span><input id="attempt-url" readonly></label>

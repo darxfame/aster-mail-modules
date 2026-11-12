@@ -1,4 +1,9 @@
 const en = {
+  'Префикс комнаты': 'Room prefix',
+  'До 24 латинских букв и цифр. Буквы станут строчными. Можно оставить пустым. К префиксу добавляются 32 случайных символа.': 'Up to 24 Latin letters and digits. Letters become lowercase. May be empty. A random 32-character suffix is added.',
+  'Сохранить префикс': 'Save prefix',
+  'Префикс должен содержать до 24 латинских букв и цифр.': 'The prefix must contain up to 24 Latin letters and digits.',
+  'Префикс сохранён. Он применяется к новым комнатам.': 'Prefix saved. It applies to new rooms.',
   'Последняя попытка создания': 'Last creation attempt',
   'Адрес комнаты': 'Room address',
   'Проверка GET': 'GET check',

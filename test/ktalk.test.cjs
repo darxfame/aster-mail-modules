@@ -26,6 +26,38 @@ const notFound = () => { throw Object.assign(new Error('fictional missing room')
 const configured = { server: 'https://app.ktalk.ru', apiKey: 'fictional-secret' };
 // Shape observed in the public demo GET for a fresh random address (no real IDs).
 const defaultRoom = name => ({ roomName: name, moderators: [], anonymousModerators: [], onlineUsers: [], sessionHalls: [], conferenceId: 'fictional-conference' });
+test('room prefix is validated, normalized and combined with a full random UUID', async () => {
+  const { roomPrefix, newRoomName } = await import('../ktalk/core.js');
+  assert.equal(roomPrefix(), 'aster'); assert.equal(roomPrefix(' Team42 '), 'team42');
+  for (const prefix of ['', 'team42', 'a'.repeat(24)]) {
+    const first = newRoomName(prefix), second = newRoomName(prefix);
+    assert.match(first, new RegExp(`^${prefix}[a-f0-9]{32}$`)); assert.notEqual(first, second);
+  }
+  for (const prefix of ['a'.repeat(25), 'команда', 'a-b', '../room', 'a b', 'a?x', null, 1]) assert.throws(() => roomPrefix(prefix));
+});
+test('prefix settings preserve credentials, pending workflow and old room verification', async () => {
+  const pending = { server: configured.server, name: `aster${'a'.repeat(32)}`, title: 'Fictional', url: `${configured.server}/aster${'a'.repeat(32)}`, status: 'unknown' };
+  const f = await fixture(() => ({ roomName: pending.name, title: pending.title }), { ...configured, pending });
+  assert.equal((await f.commands.settings()).roomPrefix, 'aster');
+  assert.equal((await f.commands['save-prefix']({ prefix: ' Team42 ' })).roomPrefix, 'team42');
+  assert.equal(f.state().apiKey, configured.apiKey); assert.deepEqual(f.state().pending, pending);
+  assert.equal(f.requests.length, 0);
+  assert.equal((await f.commands.check()).pending.status, 'created');
+  for (const prefix of ['bad/path', 'a'.repeat(25), null, undefined]) assert.equal((await f.commands['save-prefix']({ prefix })).error, 'prefix');
+  assert.equal(f.state().roomPrefix, 'team42');
+  const cleared = await f.commands.reset({ confirm: true }); assert.equal(cleared.roomPrefix, 'aster');
+});
+test('custom and empty prefixes create HTTPS calendar links and survive restarting verification', async () => {
+  for (const prefix of ['team42', '']) {
+    const f = await fixture(input => input.method === 'GET' ? defaultRoom(input.url.split('/').at(-1)) : { roomName: input.url.split('/').at(-1), title: input.body.title }, configured);
+    await f.commands['save-prefix']({ prefix }); f.api.draft = { title: 'Fictional', body: '', location: '' };
+    const result = await f.commands['create-meeting-room']({}, { editorId: 'prefix-editor' });
+    assert.equal(result.error, undefined); assert.match(result.url, new RegExp(`/` + prefix + '[a-f0-9]{32}$'));
+    assert.equal(f.writes[0].input.location, result.url);
+    const restart = await fixture(() => ({ roomName: f.state().pending.name, title: 'Fictional' }), f.state());
+    assert.equal((await restart.commands.check()).pending.status, 'created');
+  }
+});
 test('server and room parsing accepts custom HTTPS and test_room but rejects escapes', async () => {
   const { serverOrigin, roomURL } = await import('../ktalk/core.js');
   assert.equal(serverOrigin('app.ktalk.ru'), 'https://app.ktalk.ru');

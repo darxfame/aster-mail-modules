@@ -15,14 +15,19 @@ const messages = {
   unknown: 'Результат неизвестен. Проверьте комнату в Толке. Создание не повторяется.',
   rejected: 'Запрос отклонён. Проверьте ключ, его права и ограничения сервера.',
   notfound: 'Комната пока не найдена. При неизвестном результате проверьте её в Толке перед новым созданием.',
-  read: 'Не удалось прочитать комнату. Проверьте подключение и права ключа.'
+  read: 'Не удалось прочитать комнату. Проверьте подключение и права ключа.',
+  prefix: 'Префикс должен содержать до 24 латинских букв и цифр.'
 };
+function prefixPreview() {
+  $('#prefix-preview').textContent = `${state.server || 'https://company.ktalk.ru'}/${$('#room-prefix').value.trim().toLowerCase()}…`;
+}
 function render() {
   const auth = state.auth || {};
   $('#auth-state').textContent = auth.blockedOrigin ? `${tr('Этот сервер входа не поддержан версией модуля. Обновите модуль или сообщите его разработчику:')} ${auth.blockedOrigin}` : tr(auth.pending ? 'Завершите вход в отдельном окне Толка.' : auth.connected && auth.origin === state.server ? 'Сессия сохранена. Права на создание комнат проверяются отдельно.' : 'Для создания комнат войдите в Толк или укажите ключ API.');
   $('#key-hint').textContent = tr(state.hasKey ? 'Ключ сохранён. Оставьте поле пустым, чтобы сохранить его.' : 'Ключ нужен только для создания комнат.');
   $('#clear-key').disabled = !state.hasKey;
   $('#logout').disabled = !auth.connected && !auth.pending;
+  prefixPreview();
   $('#last-attempt').hidden = !state.lastAttempt;
   if (state.lastAttempt) {
     $('#attempt-url').value = state.lastAttempt.url;
@@ -63,6 +68,12 @@ $('#settings').addEventListener('submit', async event => {
   await run('save', { server: $('#server').value, apiKey: $('#api-key').value }, 'Настройки сохранены.');
   $('#api-key').value = '';
 });
+$('#room-prefix').addEventListener('input', prefixPreview);
+$('#room-settings').addEventListener('submit', async event => {
+  event.preventDefault();
+  const value = await run('save-prefix', { prefix: $('#room-prefix').value }, 'Префикс сохранён. Он применяется к новым комнатам.');
+  if (value && !value.error) { $('#room-prefix').value = value.roomPrefix; prefixPreview(); }
+});
 $('#clear-key').addEventListener('click', async () => {
   await run('save', { server: state.server, apiKey: '', clearKey: true }, 'Настройки сохранены.'); $('#api-key').value = '';
 });
@@ -72,14 +83,14 @@ $('#login').addEventListener('click', async () => {
   const value = await run('save', { server: $('#server').value, apiKey: $('#api-key').value }); $('#api-key').value = '';
   if (value && !value.error) await run('login');
 });
-$('#logout').addEventListener('click', () => run('logout'));
+$('#logout').addEventListener('click', async () => { const value = await run('logout'); if (value && !value.error) $('#connection').open = true; });
 $('#reset').addEventListener('click', async () => {
   if ($('#reset').dataset.confirmed !== 'true') {
     $('#reset').dataset.confirmed = 'true'; $('#reset').textContent = tr('Подтвердить полный сброс');
     $('#status').textContent = tr('Будут удалены сервер, API-ключ, сессия и настройки комнат. Комнаты на сервере сохранятся.'); return;
   }
   const value = await run('reset', { confirm: true }, 'Настройки Толка очищены.');
-  if (value && !value.error) { $('#server').value = ''; $('#api-key').value = ''; $('#ack').checked = false; }
+  if (value && !value.error) { $('#server').value = ''; $('#api-key').value = ''; $('#room-prefix').value = value.roomPrefix; prefixPreview(); $('#connection').open = true; $('#ack').checked = false; }
   delete $('#reset').dataset.confirmed; $('#reset').textContent = tr('Сбросить все настройки Толка');
 });
 $('#acknowledge').addEventListener('click', async () => { await run('acknowledge', { confirm: $('#ack').checked }); $('#ack').checked = false; });
@@ -90,10 +101,12 @@ try {
   for (const element of document.querySelectorAll('[data-text]')) element.textContent = tr(element.textContent);
   state = await bridge.command('settings');
   $('#server').value = state.server;
+  $('#room-prefix').value = state.roomPrefix;
+  $('#connection').open = !(state.auth?.connected && state.auth.origin === state.server);
   for (const server of state.servers.filter(value => value !== 'https://app.ktalk.ru')) { const option = document.createElement('option'); option.value = server; $('#servers').append(option); }
   render();
 } catch { $('#status').textContent = tr('Не удалось выполнить действие. Проверьте введённые данные и состояние модуля.'); }
 setInterval(async () => {
   if (busy || !state.auth?.pending) return;
-  try { state.auth = await bridge.call('auth.status'); if (state.auth.connected && !state.auth.pending) $('#connection').open = false; render(); } catch { /* Account retirement closes this view. */ }
+  try { state.auth = await bridge.call('auth.status'); if (state.auth.connected && state.auth.origin === state.server && !state.auth.pending) $('#connection').open = false; render(); } catch { /* Account retirement closes this view. */ }
 }, 1200);

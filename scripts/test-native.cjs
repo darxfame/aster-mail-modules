@@ -148,6 +148,16 @@ app.whenReady().then(async () => {
     await new Promise(resolve => setTimeout(resolve, 250));
     const ui = await view.webContents.executeJavaScript('({ ready: document.querySelector("#server").value, overflow: document.documentElement.scrollWidth > window.innerWidth, password: document.querySelector("#api-key").value })');
     assert.equal(ui.ready, 'https://diy.ktalk.ru'); assert.equal(ui.overflow, false); assert.equal(ui.password, '');
+    const sessionControls = await view.webContents.executeJavaScript('({connectionOpen:document.querySelector("#connection").open,actionsOutside:!["logout","reset"].some(id=>document.getElementById(id).closest("details")),prefix:document.querySelector("#room-prefix").value})');
+    assert.equal(sessionControls.connectionOpen, false); assert.equal(sessionControls.actionsOutside, true);
+    if (scale === 1) {
+      assert.equal(sessionControls.prefix, 'aster');
+      await view.webContents.executeJavaScript('document.querySelector("#room-prefix").value="Team42";document.querySelector("#room-prefix").dispatchEvent(new Event("input"));document.querySelector("#room-settings").requestSubmit()');
+      const prefixDeadline = Date.now() + 5000;
+      while (records[0].data.roomPrefix !== 'team42' && Date.now() < prefixDeadline) await new Promise(resolve => setTimeout(resolve, 50));
+      assert.equal(records[0].data.roomPrefix, 'team42'); assert.equal(records[0].auth.token, 'fictional-private-session');
+      assert.equal(records[0].data.pending.status, 'created'); assert.equal(puts, 2);
+    } else assert.equal(sessionControls.prefix, 'team42');
     await view.webContents.executeJavaScript('document.querySelector("#connection").open=false');
     const details = await view.webContents.executeJavaScript('({hidden:document.querySelector("#last-attempt").hidden,url:document.querySelector("#attempt-url").value,check:document.querySelector("#attempt-check").textContent,write:document.querySelector("#attempt-write").textContent})');
     assert.equal(details.hidden, false); assert.match(details.url, /\/aster[a-f0-9]{32}$/);
